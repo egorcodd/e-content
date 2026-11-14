@@ -6,7 +6,12 @@ import path from 'node:path';
 const origin = process.env.PREVIEW_URL || 'http://127.0.0.1:5186';
 const output = path.join(process.cwd(), '.qa', 'v2');
 fs.mkdirSync(output, { recursive: true });
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+// CHROME_PATH lets the check run on machines without Microsoft Edge (e.g. Linux).
+const browser = await chromium.launch(
+  process.env.CHROME_PATH
+    ? { executablePath: process.env.CHROME_PATH, headless: true }
+    : { channel: 'msedge', headless: true },
+);
 const context = await browser.newContext({
   viewport: { width: 1440, height: 1000 },
   acceptDownloads: true,
@@ -25,25 +30,12 @@ async function download(click, name) {
   await file.saveAs(target);
   return target;
 }
-async function mono() {
-  return page.evaluate(() => {
-    const bad = [];
-    for (const el of document.querySelectorAll('body *')) {
-      if (!el.getClientRects().length) continue;
-      const style = getComputedStyle(el);
-      for (const key of ['color', 'backgroundColor', 'borderTopColor', 'fill', 'stroke']) {
-        const value = style[key];
-        const match = value?.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-        if (
-          match &&
-          Math.max(...match.slice(1, 4).map(Number)) - Math.min(...match.slice(1, 4).map(Number)) >
-            2
-        )
-          bad.push({ tag: el.tagName, cls: el.getAttribute('class'), key, value });
-      }
-    }
-    return bad.slice(0, 20);
-  });
+async function statusColors() {
+  return page.evaluate(() =>
+    [...document.querySelectorAll('.ec-statuses .ec-status-icon')].map(
+      (e) => getComputedStyle(e).color,
+    ),
+  );
 }
 try {
   await page.goto(origin + '/?view=components');
@@ -52,7 +44,7 @@ try {
   assert.match(await page.title(), /^e-content/);
   assert.equal(await page.locator('body').evaluate((e) => getComputedStyle(e).fontSize), '16px');
   assert.equal(
-    await page.locator('body').evaluate((e) => getComputedStyle(e).fontFamily.includes('Manrope')),
+    await page.locator('body').evaluate((e) => getComputedStyle(e).fontFamily.includes('Inter')),
     true,
   );
   assert.equal(await page.locator('input[type=checkbox]').count(), 0);
@@ -65,8 +57,8 @@ try {
     'Единый язык для данных',
   ])
     assert.ok(!text.includes(removed));
-  assert.deepEqual(await mono(), []);
-  checks.push('grayscale-and-no-removed-copy');
+  assert.equal(new Set(await statusColors()).size, 5);
+  checks.push('accent-status-colors-and-no-removed-copy');
   await page.keyboard.press('Tab');
   assert.equal(await page.locator('.ec-skip').evaluate((e) => e === document.activeElement), true);
   await page.keyboard.press('/');
@@ -138,16 +130,42 @@ try {
       .evaluate((e) => getComputedStyle(e.querySelector('.thinking-pixels')).animationName),
     'none',
   );
-  assert.equal(
-    await page
-      .locator('.ec-status-error svg')
-      .getAttribute('class')
-      .then((s) => s.includes('circle-alert')),
-    true,
+  const motionNames = await page.evaluate(() =>
+    Object.fromEntries(
+      [
+        ['wait', '.si-core'],
+        ['run', '.si-arc'],
+        ['done', '.si-check'],
+        ['pause', '.si-bar'],
+        ['err', ''],
+      ].map(([kind, part]) => [
+        kind,
+        getComputedStyle(document.querySelector(`.ec-statuses svg.ec-st-${kind} ${part}`.trim()))
+          .animationName,
+      ]),
+    ),
   );
-  checks.push('active-only-thinking-motion-and-error-icon');
+  assert.deepEqual(motionNames, {
+    wait: 'si-breathe',
+    run: 'si-spin, si-arc',
+    done: 'si-draw',
+    pause: 'si-hold',
+    err: 'si-shake',
+  });
+  await page.getByRole('button', { name: 'Ошибка', exact: true }).click();
+  assert.equal(await page.locator('.ec-lifecycle .ec-status.ec-st-err').count(), 1);
+  checks.push('active-only-thinking-motion-and-per-status-animation');
+  const hold = page.getByRole('button', { name: 'Удалить черновик, удерживайте', exact: true });
+  await hold.click();
+  assert.equal(await page.getByText('Черновик удалён').count(), 0);
+  await hold.hover();
+  await page.mouse.down();
+  await page.waitForTimeout(1300);
+  await page.mouse.up();
+  await page.getByText('Черновик удалён').waitFor();
+  checks.push('hold-to-confirm-button');
   await page.locator('#workshop').scrollIntoViewIfNeeded();
-  for (const variant of ['Связи', 'Линия', 'Изометрия']) {
+  for (const variant of ['Пульт', 'Циферблат', 'Изометрия']) {
     await page
       .getByRole('group', { name: 'Вариант цеха' })
       .getByRole('button', { name: variant, exact: true })
@@ -164,7 +182,7 @@ try {
     await page.locator('.wg-scene').evaluate((e) => getComputedStyle(e).borderTopWidth),
     '0px',
   );
-  checks.push('three-integrated-workshop-variants');
+  checks.push('three-workshop-variants-without-links');
   const telegram = page.getByRole('button', { name: 'Открыть участок Telegram', exact: true });
   await telegram.click();
   await page.getByRole('region', { name: 'Процесс Telegram' }).waitFor();
@@ -239,50 +257,45 @@ try {
   checks.push('create-folder');
   const analytics = page.locator('#analytics');
   await analytics.scrollIntoViewIfNeeded();
-  await analytics.getByRole('combobox', { name: 'Период графика', exact: true }).selectOption('7');
+  const inGroup = (group, name) =>
+    analytics.getByRole('group', { name: group, exact: true }).getByRole('button', { name });
+  await inGroup('Период графика', '7 дней').click();
   await analytics.getByRole('button', { name: 'Данные', exact: true }).click();
   assert.equal(await analytics.locator('.ag-data-scroll tbody tr').count(), 7);
   await analytics.getByRole('button', { name: 'График', exact: true }).click();
   await analytics.locator('.ag-trend-svg').focus();
   await page.keyboard.press('ArrowLeft');
   await analytics.locator('.ag-tooltip').waitFor();
-  await analytics.getByRole('combobox', { name: 'Период графика', exact: true }).selectOption('30');
-  await analytics.getByRole('button', { name: 'Линии', exact: true }).click();
+  await inGroup('Период графика', '30 дней').click();
+  await inGroup('Показатель графика', /^Комментарии/).click();
   assert.equal(
-    await analytics
-      .getByRole('button', { name: 'Линии', exact: true })
-      .getAttribute('aria-pressed'),
+    await inGroup('Показатель графика', /^Комментарии/).getAttribute('aria-pressed'),
     'true',
   );
+  await inGroup('Вид графика', 'Линии').click();
+  assert.equal(await inGroup('Вид графика', 'Линии').getAttribute('aria-pressed'), 'true');
   checks.push('smooth-chart-period-variants-tooltip-and-table');
-  await analytics
-    .getByRole('combobox', { name: 'Источник воронки', exact: true })
-    .selectOption({ index: 1 });
-  await analytics
-    .locator('.ag-donut .ag-switch-group')
-    .getByRole('button', { name: 'Площадки', exact: true })
-    .click();
-  await analytics.locator('.ag-heatmap-grid>button').first().focus();
-  await page.keyboard.press('ArrowRight');
-  assert.equal(
-    await analytics
-      .locator('.ag-heatmap-grid>button')
-      .nth(1)
-      .evaluate((e) => e === document.activeElement),
-    true,
-  );
-  checks.push('funnel-donut-and-heatmap-controls');
+  await inGroup('Источник воронки', /TG/).click();
+  assert.equal(await analytics.locator('.ag-flow-row').count(), 4);
+  await inGroup('Группировка материалов', 'Площадки').click();
+  await inGroup('Источники обсуждений', /TT/).click();
+  await page.waitForFunction(() => document.querySelectorAll('.ag-source-row').length === 1);
+  const session = analytics.locator('.ag-journal button.ag-journal-row').first();
+  await session.click();
+  assert.equal(await session.getAttribute('aria-expanded'), 'true');
+  await analytics.locator('.ag-journal-detail').first().waitFor();
+  checks.push('flow-donut-sources-and-journal-controls');
   await page
     .getByRole('group', { name: 'Шрифт интерфейса' })
-    .getByRole('button', { name: 'Onest', exact: true })
+    .getByRole('button', { name: 'Golos', exact: true })
     .click();
   assert.equal(
-    await page.locator('body').evaluate((e) => getComputedStyle(e).fontFamily.includes('Onest')),
+    await page.locator('body').evaluate((e) => getComputedStyle(e).fontFamily.includes('Golos')),
     true,
   );
   await page
     .getByRole('group', { name: 'Шрифт интерфейса' })
-    .getByRole('button', { name: 'Manrope', exact: true })
+    .getByRole('button', { name: 'Inter', exact: true })
     .click();
   await page.locator('.ec-logo-variants').getByRole('button', { name: /Слой/ }).click();
   await page.reload();

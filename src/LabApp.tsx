@@ -1,33 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
-  ArrowDownToLine,
-  ArrowRight,
-  ArrowUpRight,
-  Check,
-  ChevronDown,
-  CircleAlert,
-  Copy,
-  FileText,
-  Layers,
-  Menu,
-  Pause,
-  Play,
-  Plus,
-  Search,
-  Send,
-  X,
-} from 'lucide-react';
+  ArrowRightIcon,
+  CaretDownIcon,
+  CheckIcon,
+  CopyIcon,
+  DownloadSimpleIcon,
+  FileTextIcon,
+  ListIcon,
+  MagnifyingGlassIcon,
+  PlayIcon,
+  PlusIcon,
+  StackIcon,
+  StopIcon,
+  TelegramLogoIcon,
+  TiktokLogoIcon,
+  TrashIcon,
+  XIcon,
+} from '@phosphor-icons/react';
 import { AnalyticsGallery } from './lab/AnalyticsGallery';
 import { LibraryGallery } from './lab/LibraryGallery';
 import { WorkshopGallery } from './lab/WorkshopGallery';
 import {
+  ArrowSwap,
   downloadText,
   LabDialog,
   LogoMark,
   SectionHeading,
   Segment,
+  StatusBadge,
+  StatusIcon,
+  statusLabels,
   ThinkingGlyph,
+  type StatusKind,
 } from './lab/shared';
 import './lab/lab.css';
 
@@ -38,37 +43,81 @@ const sections = [
   { id: 'analytics', label: 'Графики' },
   { id: 'typography', label: 'Типографика' },
 ];
+const fonts = [
+  { id: 'Inter', label: 'Inter', family: '"Inter Variable"' },
+  { id: 'Golos', label: 'Golos', family: '"Golos Text Variable"' },
+  { id: 'Manrope', label: 'Manrope', family: 'Manrope' },
+];
 const tokens = {
   name: 'e-content',
-  version: '0.2',
+  version: '0.3',
   color: {
     background: '#090909',
     surface: '#121212',
     raised: '#1c1c1c',
     line: '#2b2b2b',
-    text: '#f1f1f1',
+    text: '#ececec',
     muted: '#999999',
   },
+  source: { telegram: '#3987e5', tiktok: '#d55181', third: '#c98500' },
+  status: { wait: '#8d939c', run: '#9a8cf2', done: '#2fbf71', pause: '#f2b02c', error: '#e5534b' },
   typography: {
-    family: 'Manrope',
+    family: 'Inter',
+    opticalSizing: 'auto',
     sizes: { caption: 12, label: 14, body: 16, heading: 28, title: 36 },
   },
   spacing: [4, 8, 12, 16, 24, 32, 48, 64],
   radius: { sharp: 8, soft: 14, pill: 999 },
-  motion: { hover: 140, panel: 300, camera: 700 },
+  motion: {
+    hover: 250,
+    press: 80,
+    panel: 300,
+    camera: 700,
+    easeOut: 'cubic-bezier(0.16, 1, 0.3, 1)',
+    spring: 'linear() ~6% overshoot, 450ms',
+  },
 };
-function stored(key: string, fallback: string) {
+const swatches = [
+  {
+    group: 'Основа',
+    items: Object.entries(tokens.color).map(([name, color]) => ({ name, color })),
+  },
+  {
+    group: 'Источники',
+    items: [
+      { name: 'Telegram', color: tokens.source.telegram },
+      { name: 'TikTok', color: tokens.source.tiktok },
+      { name: 'Третий', color: tokens.source.third },
+    ],
+  },
+  {
+    group: 'Статусы',
+    items: (Object.keys(statusLabels) as StatusKind[]).map((kind) => ({
+      name: statusLabels[kind],
+      color: tokens.status[kind === 'err' ? 'error' : kind],
+    })),
+  },
+];
+function stored(key: string, fallback: string, allowed?: string[]) {
   try {
-    return localStorage.getItem(key) || fallback;
+    const value = localStorage.getItem(key);
+    return value && (!allowed || allowed.includes(value)) ? value : fallback;
   } catch {
     return fallback;
   }
 }
 export default function LabApp() {
   const [logo, setLogo] = useState(stored('e-content-logo', 'cut'));
-  const [font, setFont] = useState(stored('e-content-font', 'Manrope'));
+  const [font, setFont] = useState(
+    stored(
+      'e-content-font-v3',
+      'Inter',
+      fonts.map((f) => f.id),
+    ),
+  );
   const [notice, setNotice] = useState('');
   const [menu, setMenu] = useState(false);
+  const [current, setCurrent] = useState('components');
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   function notify(text: string) {
     clearTimeout(timer.current);
@@ -86,6 +135,34 @@ export default function LabApp() {
     };
     window.addEventListener('keydown', shortcut);
     return () => window.removeEventListener('keydown', shortcut);
+  }, []);
+  // Spotlight hovers read the cursor position from --mx/--my on every lit ancestor.
+  useEffect(() => {
+    const lit = '.ec-button, .ec-round, .ec-glow';
+    const move = (e: PointerEvent) => {
+      let el = (e.target as Element | null)?.closest?.<HTMLElement>(lit) ?? null;
+      while (el) {
+        const rect = el.getBoundingClientRect();
+        el.style.setProperty('--mx', `${e.clientX - rect.left}px`);
+        el.style.setProperty('--my', `${e.clientY - rect.top}px`);
+        el = el.parentElement?.closest<HTMLElement>(lit) ?? null;
+      }
+    };
+    window.addEventListener('pointermove', move, { passive: true });
+    return () => window.removeEventListener('pointermove', move);
+  }, []);
+  useEffect(() => {
+    const spy = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) if (entry.isIntersecting) setCurrent(entry.target.id);
+      },
+      { rootMargin: '-40% 0px -55% 0px' },
+    );
+    for (const section of sections) {
+      const el = document.getElementById(section.id);
+      if (el) spy.observe(el);
+    }
+    return () => spy.disconnect();
   }, []);
   useEffect(() => {
     document.title = 'e-content / дизайн-система';
@@ -123,12 +200,10 @@ export default function LabApp() {
     };
   }, []);
   useEffect(() => {
-    document.documentElement.style.setProperty(
-      '--font-sans',
-      font === 'Системный' ? '"Segoe UI", sans-serif' : `"${font}", "Segoe UI", sans-serif`,
-    );
+    const family = fonts.find((f) => f.id === font)?.family ?? fonts[0].family;
+    document.documentElement.style.setProperty('--font-sans', `${family}, "Segoe UI", sans-serif`);
     try {
-      localStorage.setItem('e-content-font', font);
+      localStorage.setItem('e-content-font-v3', font);
     } catch {}
   }, [font]);
   useEffect(() => {
@@ -165,17 +240,29 @@ export default function LabApp() {
           </a>
           <nav className={menu ? 'is-open' : ''} aria-label="Части дизайн-системы">
             {sections.map((s) => (
-              <a key={s.id} href={'#' + s.id} onClick={() => setMenu(false)}>
-                {s.label}
+              <a
+                key={s.id}
+                href={'#' + s.id}
+                aria-current={current === s.id ? 'location' : undefined}
+                onClick={() => setMenu(false)}
+              >
+                {current === s.id && (
+                  <motion.span
+                    layoutId="ec-nav-pill"
+                    className="ec-nav-pill"
+                    transition={{ type: 'spring', bounce: 0.2, duration: 0.55 }}
+                  />
+                )}
+                <span>{s.label}</span>
               </a>
             ))}
           </nav>
           <div className="ec-header-end">
             <span className="ec-version">
-              Дизайн-система <span>02</span>
+              Дизайн-система <span>03</span>
             </span>
             <button className="ec-icon" onClick={exportTokens} aria-label="Скачать токены">
-              <ArrowDownToLine size={19} />
+              <DownloadSimpleIcon size={19} className="ec-ico-drop" />
             </button>
             <button
               className="ec-icon ec-mobile-menu"
@@ -183,7 +270,7 @@ export default function LabApp() {
               aria-expanded={menu}
               onClick={() => setMenu((v) => !v)}
             >
-              {menu ? <X size={20} /> : <Menu size={20} />}
+              {menu ? <XIcon size={20} /> : <ListIcon size={20} />}
             </button>
           </div>
         </div>
@@ -199,11 +286,7 @@ export default function LabApp() {
               label="Шрифт интерфейса"
               value={font}
               onChange={setFont}
-              values={[
-                { id: 'Manrope', label: 'Manrope' },
-                { id: 'Onest', label: 'Onest' },
-                { id: 'Системный', label: 'Системный' },
-              ]}
+              values={fonts.map((f) => ({ id: f.id, label: f.label }))}
             />
           </SectionHeading>
           <div className="ec-type-variants">
@@ -230,22 +313,30 @@ export default function LabApp() {
             </div>
             <div>
               <span className="ec-sample-label">Интерфейс / 16</span>
-              <div className="ec-type-ui">
-                <FileText size={18} />
+              <a className="ec-type-ui" href="#library">
+                <FileTextIcon size={18} />
                 <span>
                   Сценарий ролика.md<small>Сегодня, 14:32</small>
                 </span>
-                <ArrowUpRight size={17} />
-              </div>
+                <ArrowSwap size={17} />
+              </a>
               <div className="ec-type-numbers">
                 12 840 <span>+18,6%</span>
               </div>
               <div className="ec-type-tags">
-                <span>Telegram</span>
-                <span>TikTok</span>
+                <span className="ec-src-tg">Telegram</span>
+                <span className="ec-src-tt">TikTok</span>
                 <span>Markdown</span>
               </div>
             </div>
+          </div>
+          <div className="ec-type-scale" aria-label="Шкала размеров">
+            {[12, 14, 16, 20, 28, 40].map((size) => (
+              <div key={size}>
+                <span>{size}</span>
+                <p style={{ fontSize: size }}>Что спросить у команды до выхода на работу?</p>
+              </div>
+            ))}
           </div>
           <div className="ec-logo-variants">
             {[
@@ -255,7 +346,7 @@ export default function LabApp() {
             ].map((v) => (
               <button
                 key={v.id}
-                className={logo === v.id ? 'is-selected' : ''}
+                className={'ec-glow ' + (logo === v.id ? 'is-selected' : '')}
                 onClick={() => setLogo(v.id)}
                 aria-pressed={logo === v.id}
               >
@@ -265,28 +356,36 @@ export default function LabApp() {
                 </div>
                 <span>
                   {v.label}
-                  {logo === v.id ? <Check size={16} /> : <ArrowUpRight size={16} />}
+                  {logo === v.id ? <CheckIcon size={16} /> : <ArrowSwap size={16} />}
                 </span>
               </button>
             ))}
           </div>
           <div className="ec-palette">
-            {Object.entries(tokens.color).map(([name, color]) => (
-              <button
-                key={name}
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(color);
-                    notify(color + ' скопирован');
-                  } catch {
-                    notify('Скачайте токены кнопкой в шапке');
-                  }
-                }}
-                aria-label={`Скопировать ${name}: ${color}`}
-              >
-                <span style={{ background: color }} />
-                <code>{color}</code>
-              </button>
+            {swatches.map((group) => (
+              <div key={group.group} className="ec-palette-group">
+                <span className="ec-sample-label">{group.group}</span>
+                <div>
+                  {group.items.map(({ name, color }) => (
+                    <button
+                      key={name}
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(color);
+                          notify(color + ' скопирован');
+                        } catch {
+                          notify('Скачайте токены кнопкой в шапке');
+                        }
+                      }}
+                      aria-label={`Скопировать ${name}: ${color}`}
+                    >
+                      <span style={{ background: color }} />
+                      <small>{name}</small>
+                      <code>{color}</code>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </section>
@@ -295,7 +394,7 @@ export default function LabApp() {
         <LogoMark variant={logo} size={18} />
         <span>e-content</span>
         <button onClick={exportTokens}>
-          Токены <ArrowDownToLine size={14} />
+          Токены <DownloadSimpleIcon size={14} className="ec-ico-drop" />
         </button>
       </footer>
       <AnimatePresence>
@@ -304,23 +403,85 @@ export default function LabApp() {
             className="ec-toast"
             role="status"
             aria-live="polite"
-            initial={{ y: 12, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 8, opacity: 0 }}
+            initial={{ y: 24, opacity: 0, scale: 0.94 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: 12, opacity: 0, scale: 0.97 }}
+            transition={{ type: 'spring', bounce: 0.3, duration: 0.5 }}
           >
-            <Check size={16} />
+            <StatusIcon kind="done" size={16} />
             <span>{notice}</span>
             <button
               className="ec-icon"
               onClick={() => setNotice('')}
               aria-label="Закрыть уведомление"
             >
-              <X size={15} />
+              <XIcon size={15} />
             </button>
           </motion.div>
         )}
       </AnimatePresence>
     </MotionConfig>
+  );
+}
+
+/** Cross-fades between two icons with a small spin, e.g. copy → check. */
+function IconSwap({ on, off, active }: { on: ReactNode; off: ReactNode; active: boolean }) {
+  return (
+    <span className="ec-icon-swap" aria-hidden="true">
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.span
+          key={active ? 'on' : 'off'}
+          initial={{ opacity: 0, scale: 0.4, rotate: -45 }}
+          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+          exit={{ opacity: 0, scale: 0.4, rotate: 45 }}
+          transition={{ type: 'spring', bounce: 0.35, duration: 0.45 }}
+        >
+          {active ? on : off}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
+
+/** Destructive action that only fires after a 1.1 s press (pointer, Space or Enter). */
+function HoldButton({ onConfirm }: { onConfirm: () => void }) {
+  const [holding, setHolding] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const start = () => {
+    setHolding(true);
+    timer.current = setTimeout(() => {
+      setHolding(false);
+      onConfirm();
+    }, 1100);
+  };
+  const cancel = () => {
+    clearTimeout(timer.current);
+    setHolding(false);
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const isKey = (key: string) => key === ' ' || key === 'Enter';
+  return (
+    <button
+      className={'ec-button ec-hold ' + (holding ? 'is-holding' : '')}
+      aria-label="Удалить черновик, удерживайте"
+      onPointerDown={start}
+      onPointerUp={cancel}
+      onPointerLeave={cancel}
+      onPointerCancel={cancel}
+      onContextMenu={(e) => e.preventDefault()}
+      onKeyDown={(e) => {
+        if (isKey(e.key) && !e.repeat) {
+          e.preventDefault();
+          start();
+        }
+      }}
+      onKeyUp={(e) => isKey(e.key) && cancel()}
+      onBlur={cancel}
+    >
+      <span className="ec-hold-fill" />
+      <TrashIcon size={16} />
+      {holding ? 'Держите…' : 'Удалить черновик'}
+    </button>
   );
 }
 
@@ -332,6 +493,20 @@ const sampleItems = [
   { title: 'Как выбрать пет-проект', platform: 'Telegram', type: 'Вопросы', age: 6 },
   { title: 'Неделя без идеального плана', platform: 'Telegram', type: 'Публикации', age: 23 },
 ];
+const statusNotes: Record<StatusKind, string> = {
+  wait: 'Пунктирная орбита и дыхание',
+  run: 'Дуга догоняет себя, текст мерцает',
+  done: 'Галочка рисуется, расходится круг',
+  pause: 'Полосы по очереди затихают',
+  err: 'Встряска и мягкая тревога',
+};
+const phaseText: Record<StatusKind, string> = {
+  wait: 'Ожидает запуска',
+  run: 'Анализирую материалы…',
+  done: 'Пример завершён',
+  pause: 'Остановлено на шаге 2 из 4',
+  err: 'Источник не ответил',
+};
 function ComponentGallery({ notify }: { notify: (text: string) => void }) {
   const [platform, setPlatform] = useState('Все');
   const [type, setType] = useState('Все материалы');
@@ -341,24 +516,29 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
   const [selected, setSelected] = useState(false);
   const [modal, setModal] = useState(false);
   const [title, setTitle] = useState('');
-  const [running, setRunning] = useState(false);
-  const [done, setDone] = useState(false);
+  const [phase, setPhase] = useState<StatusKind>('wait');
+  const [copied, setCopied] = useState(false);
   const [parameters, setParameters] = useState(false);
+  const [replay, setReplay] = useState<Partial<Record<StatusKind, number>>>({});
+  const running = phase === 'run';
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  function run() {
-    if (running) {
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(
+    () => () => {
       clearTimeout(timer.current);
-      setRunning(false);
-      setDone(false);
-      return;
-    }
-    setRunning(true);
-    setDone(false);
-    timer.current = setTimeout(() => {
-      setRunning(false);
-      setDone(true);
-    }, 4800);
+      clearTimeout(copyTimer.current);
+    },
+    [],
+  );
+  function run() {
+    clearTimeout(timer.current);
+    if (running) return setPhase('pause');
+    setPhase('run');
+    timer.current = setTimeout(() => setPhase('done'), 4800);
+  }
+  function fail() {
+    clearTimeout(timer.current);
+    setPhase('err');
   }
   const filtered = sampleItems.filter(
     (item) =>
@@ -370,13 +550,19 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
   async function copy() {
     try {
       await navigator.clipboard.writeText(
-        '.button { background: #f1f1f1; color: #090909; border-radius: 999px; padding: 12px 20px; }',
+        '.button { background: #ececec; color: #0c0c0c; border-radius: 999px; padding: 12px 20px; }',
       );
+      setCopied(true);
+      clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1600);
       notify('CSS кнопки скопирован');
     } catch {
       notify('Копирование недоступно');
     }
   }
+  const copyIcon = (
+    <IconSwap active={copied} on={<CheckIcon size={16} />} off={<CopyIcon size={16} />} />
+  );
   return (
     <section id="components" className="ec-section ec-components">
       <div className="ec-section-heading">
@@ -394,7 +580,7 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
           </div>
           <div className="ec-button-row">
             <button className="ec-button ec-white ec-pill" onClick={() => setModal(true)}>
-              <Plus size={17} />
+              <PlusIcon size={17} weight="bold" className="ec-ico-spin" />
               Создать материал
             </button>
             <button
@@ -402,17 +588,25 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
               aria-label="Добавить материал"
               onClick={() => setModal(true)}
             >
-              <Plus size={19} />
+              <PlusIcon size={19} className="ec-ico-spin" />
             </button>
           </div>
           <div className="ec-button-row">
-            <button className="ec-button ec-pill" onClick={() => setSelected((v) => !v)}>
-              {selected ? <Check size={16} /> : <Layers size={16} />}{' '}
+            <button
+              className={'ec-button ec-pill ' + (selected ? 'is-selected' : '')}
+              onClick={() => setSelected((v) => !v)}
+              aria-pressed={selected}
+            >
+              <IconSwap
+                active={selected}
+                on={<CheckIcon size={16} weight="bold" />}
+                off={<StackIcon size={16} />}
+              />
               {selected ? 'Выбрано' : 'Выбрать'}
             </button>
             <button className="ec-button ec-ghost" onClick={() => void copy()}>
-              <Copy size={16} />
-              CSS
+              {copyIcon}
+              {copied ? 'Скопировано' : 'CSS'}
             </button>
           </div>
         </div>
@@ -423,7 +617,7 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
           </div>
           <div className="ec-button-row">
             <button className="ec-button ec-outline" onClick={() => setModal(true)}>
-              <Plus size={17} />
+              <PlusIcon size={17} className="ec-ico-spin" />
               Новый материал
             </button>
             <button
@@ -431,7 +625,7 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
               aria-label="Открыть материал"
               onClick={() => setModal(true)}
             >
-              <ArrowUpRight size={18} />
+              <ArrowSwap size={18} />
             </button>
           </div>
           <div className="ec-button-row">
@@ -440,20 +634,30 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
               onClick={() => setParameters((v) => !v)}
               aria-expanded={parameters}
             >
-              Параметры <ChevronDown size={15} />
+              Параметры <CaretDownIcon size={15} />
             </button>
             <button className="ec-button ec-ghost" disabled>
               Недоступно
             </button>
           </div>
-          {parameters && (
-            <div className="ec-mini-settings">
-              <span>Формат</span>
-              <span>Markdown</span>
-              <span>Период</span>
-              <span>{period} дней</span>
-            </div>
-          )}
+          <AnimatePresence initial={false}>
+            {parameters && (
+              <motion.div
+                className="ec-mini-settings-wrap"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <div className="ec-mini-settings">
+                  <span>Формат</span>
+                  <span>Markdown</span>
+                  <span>Период</span>
+                  <span>{period} дней</span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
         <div>
           <div className="ec-specimen-caption">
@@ -461,16 +665,21 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
             <span>03</span>
           </div>
           <div className="ec-button-row">
-            <button className="ec-button ec-glass" onClick={run}>
-              {running ? <ThinkingGlyph active size={17} /> : <Play size={16} />}{' '}
+            <button className={'ec-button ec-glass ' + (running ? 'is-running' : '')} onClick={run}>
+              {running ? <ThinkingGlyph active size={17} /> : <PlayIcon size={16} weight="fill" />}{' '}
               {running ? 'Остановить' : 'Запустить пример'}
+              {running && (
+                <span className="ec-button-progress" aria-hidden="true">
+                  <i />
+                </span>
+              )}
             </button>
             <button
               className="ec-round ec-glass"
               onClick={() => void copy()}
               aria-label="Скопировать CSS"
             >
-              <Copy size={17} />
+              {copyIcon}
             </button>
           </div>
           <div className="ec-button-row">
@@ -484,9 +693,10 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
                 notify('Markdown скачан');
               }}
             >
-              <ArrowDownToLine size={16} />
+              <DownloadSimpleIcon size={16} className="ec-ico-drop" />
               Скачать
             </button>
+            <HoldButton onConfirm={() => notify('Черновик удалён')} />
           </div>
         </div>
       </div>
@@ -500,8 +710,16 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
             onChange={setPlatform}
             values={[
               { id: 'Все', label: 'Все' },
-              { id: 'Telegram', label: 'Telegram', icon: <Send size={15} /> },
-              { id: 'TikTok', label: 'TikTok', icon: <Layers size={15} /> },
+              {
+                id: 'Telegram',
+                label: 'Telegram',
+                icon: <TelegramLogoIcon size={16} weight="fill" className="ec-src-tg" />,
+              },
+              {
+                id: 'TikTok',
+                label: 'TikTok',
+                icon: <TiktokLogoIcon size={16} weight="fill" className="ec-src-tt" />,
+              },
             ]}
           />
         </div>
@@ -518,7 +736,7 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
                 <option key={t}>{t}</option>
               ))}
             </select>
-            <ChevronDown size={16} />
+            <CaretDownIcon size={16} />
           </span>
         </label>
         <label className="ec-field">
@@ -540,19 +758,19 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
                 </option>
               ))}
             </select>
-            <ChevronDown size={16} />
+            <CaretDownIcon size={16} />
           </span>
         </label>
         <button
           className="ec-button ec-white ec-pill"
           onClick={() => setApplied({ platform, type, period })}
         >
-          Применить <ArrowRight size={16} />
+          Применить <ArrowRightIcon size={16} className="ec-ico-nudge" />
         </button>
       </div>
       <div className="ec-search-example">
         <label className="ec-search">
-          <Search size={18} />
+          <MagnifyingGlassIcon size={18} />
           <input
             name="sample-search"
             aria-label="Поиск материалов"
@@ -563,7 +781,7 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
           />
           {query ? (
             <button className="ec-icon" onClick={() => setQuery('')} aria-label="Очистить поиск">
-              <X size={16} />
+              <XIcon size={16} />
             </button>
           ) : (
             <kbd>/</kbd>
@@ -571,33 +789,45 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
         </label>
         <div className="ec-match-count">
           <span>Найдено</span>
-          <strong>{filtered.length}</strong>
+          <motion.strong
+            key={filtered.length}
+            initial={{ scale: 0.7, opacity: 0.4 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', bounce: 0.5, duration: 0.5 }}
+          >
+            {filtered.length}
+          </motion.strong>
           <span className="ec-count-icon">
-            <FileText size={16} />
+            <FileTextIcon size={16} />
           </span>
         </div>
       </div>
-      <div className="ec-example-results">
-        {filtered.map((item) => (
-          <button
+      <motion.div layout className="ec-example-results">
+        {filtered.map((item, i) => (
+          <motion.button
+            layout="position"
             key={item.title}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, delay: i * 0.035, ease: [0.16, 1, 0.3, 1] }}
             onClick={() => {
               setTitle(item.title);
               setModal(true);
             }}
           >
             <span>
-              <FileText size={16} />
+              <FileTextIcon size={17} />
               {item.title}
             </span>
             <span>
+              <i className={item.platform === 'Telegram' ? 'ec-src-dot-tg' : 'ec-src-dot-tt'} />
               {item.platform}
-              <ArrowUpRight size={15} />
+              <ArrowSwap size={15} />
             </span>
-          </button>
+          </motion.button>
         ))}
         {!filtered.length && <div className="ec-no-results">Ничего не найдено</div>}
-      </div>
+      </motion.div>
       <div className="ec-component-divider" />
       <div className="ec-feedback-grid">
         <div>
@@ -606,45 +836,78 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
             <span>04</span>
           </div>
           <div className="ec-statuses">
-            <span className="ec-status">
-              <span className="ec-dot" />
-              Ожидание
-            </span>
-            <span className="ec-status">
-              <Check size={14} />
-              Готово
-            </span>
-            <span className="ec-status ec-status-filled">
-              <ThinkingGlyph active={running} size={14} />В работе
-            </span>
-            <span className="ec-status ec-status-error">
-              <CircleAlert size={14} />
-              Ошибка
-            </span>
-            <span className="ec-status">
-              <Pause size={13} />
-              Пауза
-            </span>
+            {(Object.keys(statusLabels) as StatusKind[]).map((kind) => (
+              <button
+                key={kind}
+                className="ec-status-cell"
+                aria-label={`Повторить анимацию статуса «${statusLabels[kind]}»`}
+                onClick={() => setReplay((r) => ({ ...r, [kind]: (r[kind] ?? 0) + 1 }))}
+              >
+                <StatusBadge key={replay[kind] ?? 0} kind={kind} />
+                <small>{statusNotes[kind]}</small>
+              </button>
+            ))}
           </div>
         </div>
         <div>
           <div className="ec-specimen-caption">
             <span>Выполнение</span>
-            <button className="ec-text-action" onClick={run}>
-              {running ? 'Остановить' : 'Проиграть'}
-              <Play size={12} />
-            </button>
+            <span className="ec-caption-actions">
+              <button className="ec-text-action" onClick={fail}>
+                Ошибка
+              </button>
+              <button className="ec-text-action" onClick={run}>
+                {running ? 'Остановить' : 'Проиграть'}
+                {running ? (
+                  <StopIcon size={12} weight="fill" />
+                ) : (
+                  <PlayIcon size={12} weight="fill" />
+                )}
+              </button>
+            </span>
           </div>
           <div className="ec-thinking-preview">
             <ThinkingGlyph active={running} size={22} />
-            <span>
-              {running ? 'Анализирую материалы…' : done ? 'Пример завершён' : 'Ожидает запуска'}
-            </span>
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.span
+                key={phase}
+                className="ec-phase-text"
+                initial={{ opacity: 0, y: 10, filter: 'blur(3px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, y: -10, filter: 'blur(3px)' }}
+                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              >
+                {phaseText[phase]}
+              </motion.span>
+            </AnimatePresence>
             <span className={'ec-running-bars ' + (running ? 'is-running' : '')}>
               <i />
               <i />
               <i />
             </span>
+          </div>
+          <div className="ec-lifecycle">
+            {(['wait', 'run', 'done'] as StatusKind[]).map((kind, i) => {
+              const order = ['wait', 'run', 'done'];
+              const reached =
+                phase === 'err' || phase === 'pause' ? i < 2 : i <= order.indexOf(phase);
+              const shown: StatusKind =
+                i === 1 && (phase === 'err' || phase === 'pause') ? phase : kind;
+              return (
+                <div key={kind} className={'ec-lifecycle-step ' + (reached ? 'is-reached' : '')}>
+                  <motion.span
+                    layout
+                    className={`ec-status ec-st-${shown}`}
+                    transition={{ layout: { type: 'spring', bounce: 0.2, duration: 0.5 } }}
+                  >
+                    <StatusIcon key={shown} kind={shown} size={15} />
+                    <motion.span layout="position" className="ec-status-label">
+                      {statusLabels[shown]}
+                    </motion.span>
+                  </motion.span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -681,7 +944,7 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
                 Отмена
               </button>
               <button className="ec-button ec-white" type="submit">
-                <ArrowDownToLine size={16} />
+                <DownloadSimpleIcon size={16} className="ec-ico-drop" />
                 Скачать Markdown
               </button>
             </div>

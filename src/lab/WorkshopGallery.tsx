@@ -1,168 +1,100 @@
-import { useEffect, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
-  ArrowDownToLine,
-  ArrowUpRight,
-  ChartNoAxesCombined,
-  Check,
-  ChevronRight,
-  FileText,
-  Layers,
-  Lightbulb,
-  MessagesSquare,
-  Play,
-  RotateCcw,
-  Send,
-  Square,
-  X,
-} from 'lucide-react';
-import { downloadText, SectionHeading, Segment, ThinkingGlyph } from './shared';
+  ArrowCounterClockwiseIcon,
+  CheckIcon,
+  DownloadSimpleIcon,
+  FileTextIcon,
+  PlayIcon,
+  StopIcon,
+  XIcon,
+} from '@phosphor-icons/react';
+import {
+  downloadText,
+  SectionHeading,
+  Segment,
+  StatusBadge,
+  StatusIcon,
+  type StatusKind,
+} from './shared';
+import { stations, type ViewProps } from './workshop/stations';
+import { ConsoleView } from './workshop/ConsoleView';
+import { DialView } from './workshop/DialView';
 import './workshop-gallery.css';
 
-const stations = [
-  {
-    id: 'telegram',
-    name: 'Telegram',
-    sub: '4 канала',
-    Icon: Send,
-    iso: [140, 145],
-    network: [140, 120],
-    steps: ['Публикации каналов', 'Ответы и обсуждения', 'Проверка повторов', 'telegram.md'],
-  },
-  {
-    id: 'tiktok',
-    name: 'TikTok',
-    sub: '12 роликов',
-    Icon: Layers,
-    iso: [160, 365],
-    network: [140, 365],
-    steps: ['Список роликов', 'Доступные счётчики', 'Вопросы аудитории', 'tiktok.md'],
-  },
-  {
-    id: 'collector',
-    name: 'Сбор',
-    sub: 'Входящие материалы',
-    Icon: ArrowDownToLine,
-    iso: [365, 235],
-    network: [360, 245],
-    steps: ['Чтение источников', 'Нормализация дат', 'Дедупликация', 'inbox.md'],
-  },
-  {
-    id: 'comments',
-    name: 'Комментарии',
-    sub: '128 сообщений',
-    Icon: MessagesSquare,
-    iso: [565, 120],
-    network: [565, 105],
-    steps: ['Связи с публикациями', 'Ветки ответов', 'Повторяющиеся вопросы', 'comments.md'],
-  },
-  {
-    id: 'ideas',
-    name: 'Темы',
-    sub: '18 идей',
-    Icon: Lightbulb,
-    iso: [790, 225],
-    network: [785, 245],
-    steps: ['Выделение вопросов', 'Группировка тем', 'Проверка оснований', 'ideas.md'],
-  },
-  {
-    id: 'materials',
-    name: 'Материалы',
-    sub: 'Коллекции и Markdown',
-    Icon: FileText,
-    iso: [575, 390],
-    network: [565, 385],
-    steps: ['Отобранные темы', 'Заметки и сценарии', 'Связи и метаданные', 'materials.md'],
-  },
-  {
-    id: 'analytics',
-    name: 'Аналитика',
-    sub: 'Общая картина',
-    Icon: ChartNoAxesCombined,
-    iso: [945, 385],
-    network: [990, 245],
-    steps: ['Снимки показателей', 'Сравнение периодов', 'Динамика площадок', 'report.md'],
-  },
-];
-type Station = (typeof stations)[number];
-const links: [[number, number], ...Array<[number, number]>] = [
-  [0, 2],
-  [1, 2],
-  [2, 3],
-  [3, 4],
-  [4, 5],
-  [5, 6],
-  [2, 5],
-];
-const face = (x: number, y: number, w: number) =>
-  `${x},${y - w / 2} ${x + w},${y} ${x},${y + w / 2} ${x - w},${y}`;
-function Cube({ x, y, w = 22, h = 30 }: { x: number; y: number; w?: number; h?: number }) {
-  return (
-    <g className="wg-wire">
-      <polygon points={face(x, y - h, w)} />
-      <path
-        d={`M${x - w} ${y - h}v${h}l${w} ${w / 2} ${w} ${-w / 2}v${-h}M${x} ${y - h + w / 2}v${h}`}
-      />
-    </g>
-  );
+const IsoView = lazy(() => import('./workshop/IsoView'));
+let webgl: boolean | undefined;
+function hasWebGL() {
+  if (webgl === undefined) {
+    try {
+      webgl = !!document.createElement('canvas').getContext('webgl2');
+    } catch {
+      webgl = false;
+    }
+  }
+  return webgl;
 }
-function StationModel({ station, x, y }: { station: Station; x: number; y: number }) {
-  if (['telegram', 'tiktok'].includes(station.id))
-    return <station.Icon x={x - 17} y={y - 44} width={34} height={34} strokeWidth={1.2} />;
-  if (station.id === 'collector')
-    return (
-      <>
-        <Cube x={x - 15} y={y - 10} w={11} h={28} />
-        <Cube x={x + 12} y={y - 15} w={11} h={44} />
-        <Cube x={x} y={y} w={11} h={23} />
-      </>
-    );
-  if (station.id === 'comments')
-    return (
-      <>
-        {[0, 1, 2].map((n) => (
-          <polygon key={n} points={face(x, y - 12 - n * 13, 28)} className="wg-stack" />
-        ))}
-      </>
-    );
-  if (station.id === 'analytics')
-    return (
-      <>
-        {[0, 1, 2].map((n) => (
-          <Cube key={n} x={x - 24 + n * 24} y={y - 8 + (n === 1 ? 6 : 0)} w={10} h={20 + n * 16} />
-        ))}
-      </>
-    );
+/** Anything thrown while building the 3D scene drops the user onto the console view. */
+class SceneBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+function SceneLoading() {
   return (
-    <>
-      {[0, 1, 2].map((n) => (
-        <Cube key={n} x={x} y={y - 6 - n * 13} w={27 - n * 4} h={13} />
-      ))}
-    </>
+    <div className="wg-loading" role="status">
+      <span className="wg-loading-tiles" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      Собираю сцену…
+    </div>
   );
 }
 
+const variants = [
+  { id: 'iso', label: 'Изометрия' },
+  { id: 'console', label: 'Пульт' },
+  { id: 'dial', label: 'Циферблат' },
+];
+
 export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
-  const [variant, setVariant] = useState('isometric');
+  const [variant, setVariant] = useState('iso');
   const [selected, setSelected] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [cycle, setCycle] = useState(false);
   const [step, setStep] = useState(-1);
   const [finished, setFinished] = useState(false);
   const [active, setActive] = useState<string | null>(null);
+  const [done, setDone] = useState<string[]>([]);
+  const [halted, setHalted] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
   const control = useRef<AbortController | null>(null);
+  const activeRef = useRef<string | null>(null);
   const panel = useRef<HTMLElement>(null);
-  const previous = useRef<HTMLElement | SVGElement | null>(null);
+  const previous = useRef<HTMLElement | null>(null);
   const reduced = useReducedMotion();
   const station = stations.find((s) => s.id === selected);
-  const positions = stations.map((s, i) =>
-    variant === 'isometric' ? s.iso : variant === 'network' ? s.network : [105 + i * 153, 260],
-  );
   useEffect(() => () => control.current?.abort(), []);
+  // a late frame (heavy 3D scene) must not pull focus out of a control the user already chose
+  const focusPanel = () =>
+    requestAnimationFrame(() => {
+      if (!panel.current?.contains(document.activeElement))
+        panel.current?.focus({ preventScroll: true });
+    });
   function stop() {
     control.current?.abort();
     control.current = null;
+    if (activeRef.current) setHalted(activeRef.current);
+    activeRef.current = null;
     setRunning(false);
     setActive(null);
   }
@@ -173,13 +105,15 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
   }
   function choose(id: string) {
     stop();
-    previous.current = document.getElementById('wg-node-' + id);
+    previous.current = document.activeElement as HTMLElement;
     setSelected(id);
     setCycle(false);
     setStep(-1);
     setFinished(false);
+    setDone([]);
+    setHalted(null);
     setEvents([]);
-    requestAnimationFrame(() => panel.current?.focus({ preventScroll: true }));
+    focusPanel();
   }
   const panelOpen = !!selected;
   useEffect(() => {
@@ -196,7 +130,7 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
   async function run(all: boolean) {
     if (all) {
       previous.current = document.activeElement as HTMLElement;
-      if (!selected) requestAnimationFrame(() => panel.current?.focus({ preventScroll: true }));
+      if (!selected) focusPanel();
     }
     stop();
     const abort = new AbortController();
@@ -204,6 +138,8 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
     setRunning(true);
     setCycle(all);
     setFinished(false);
+    setDone([]);
+    setHalted(null);
     setEvents([]);
     const nodes = all ? stations : stations.filter((s) => s.id === selected);
     if (!nodes.length) {
@@ -215,11 +151,12 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
         if (abort.signal.aborted) return;
         setSelected(node.id);
         setActive(node.id);
+        activeRef.current = node.id;
         for (let i = 0; i < node.steps.length; i++) {
           if (abort.signal.aborted) return;
           setStep(i);
           await new Promise<void>((resolve) => {
-            const timer = setTimeout(resolve, all ? 280 : 520);
+            const timer = setTimeout(resolve, all ? 300 : 560);
             abort.signal.addEventListener(
               'abort',
               () => {
@@ -232,6 +169,7 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
         }
         if (abort.signal.aborted) return;
         setStep(node.steps.length);
+        setDone((old) => [...old, node.id]);
         setEvents((old) => [`${node.name} / ${node.steps.at(-1)}`, ...old].slice(0, 7));
       }
       if (!abort.signal.aborted) {
@@ -242,16 +180,35 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
       if (control.current === abort) {
         setRunning(false);
         setActive(null);
+        activeRef.current = null;
         control.current = null;
       }
     }
   }
-  const selectedIndex = stations.findIndex((s) => s.id === selected);
-  const selectedPosition = positions[Math.max(0, selectedIndex)];
-  const camera =
-    selected && variant !== 'pipeline'
-      ? { scale: 1.25, x: (400 - selectedPosition[0]) * 1.1, y: (240 - selectedPosition[1]) * 0.8 }
-      : { scale: 1, x: 0, y: 0 };
+  const states: Record<string, StatusKind> = {};
+  const progress: Record<string, number> = {};
+  for (const s of stations) {
+    states[s.id] = done.includes(s.id)
+      ? 'done'
+      : active === s.id
+        ? 'run'
+        : halted === s.id
+          ? 'pause'
+          : 'wait';
+    progress[s.id] = done.includes(s.id)
+      ? 1
+      : active === s.id || halted === s.id
+        ? Math.max(0, Math.min(1, (step + (active === s.id ? 0.5 : 0)) / s.steps.length))
+        : 0;
+  }
+  const view: ViewProps = { selected, active, running, step, states, progress, choose };
+  const panelState: StatusKind = finished
+    ? 'done'
+    : running
+      ? 'run'
+      : selected && halted === selected
+        ? 'pause'
+        : 'wait';
   return (
     <section id="workshop" className="ec-section wg-section">
       <SectionHeading number="02" title="Цех">
@@ -266,183 +223,62 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
             setSelected(null);
             setVariant(id);
           }}
-          values={[
-            { id: 'isometric', label: 'Изометрия' },
-            { id: 'network', label: 'Связи' },
-            { id: 'pipeline', label: 'Линия' },
-          ]}
+          values={variants}
         />
         <div className="ec-actions">
-          <button
-            className="ec-icon"
-            onClick={() => {
-              close();
-            }}
-            aria-label="Вернуть общий вид"
-          >
-            <RotateCcw size={18} />
+          <button className="ec-icon" onClick={close} aria-label="Вернуть общий вид">
+            <ArrowCounterClockwiseIcon size={18} />
           </button>
           <button
-            className="ec-button ec-white"
+            className={'ec-button ec-white ' + (running ? 'is-running' : '')}
             onClick={() => (running ? stop() : void run(true))}
           >
-            {running ? <Square size={14} /> : <Play size={14} />}{' '}
+            {running ? <StopIcon size={14} weight="fill" /> : <PlayIcon size={14} weight="fill" />}
             {running ? 'Остановить цикл' : 'Запустить весь цикл'}
           </button>
         </div>
       </div>
-      <div className={'wg-scene ' + (running ? 'wg-running' : '')}>
-        <svg className="wg-svg" viewBox="0 0 1100 520" role="group" aria-label="Участки цеха">
-          <defs>
-            <radialGradient id="wg-fade">
-              <stop stopColor="white" />
-              <stop offset=".65" stopColor="white" stopOpacity=".4" />
-              <stop offset="1" stopColor="white" stopOpacity="0" />
-            </radialGradient>
-            <mask id="wg-mask">
-              <ellipse cx="550" cy="260" rx="550" ry="250" fill="url(#wg-fade)" />
-            </mask>
-          </defs>
-          <motion.g
-            initial={false}
-            animate={camera}
-            transition={{ duration: reduced ? 0 : 0.7, ease: [0.22, 1, 0.36, 1] }}
-            style={{ transformOrigin: '550px 260px' }}
-          >
-            {variant === 'isometric' && (
-              <g className="wg-grid" mask="url(#wg-mask)">
-                <g transform="translate(550 260) scale(1 .43) rotate(45)">
-                  {Array.from({ length: 35 }, (_, i) => i * 30 - 510).map((n) => (
-                    <g key={n}>
-                      <path d={`M${n} -510V510`} />
-                      <path d={`M-510 ${n}H510`} />
-                    </g>
-                  ))}
-                </g>
-              </g>
-            )}
-            {links.map(([from, to], i) => {
-              const a = positions[from],
-                b = positions[to];
-              const path =
-                variant === 'network'
-                  ? `M${a[0]} ${a[1]}C${(a[0] + b[0]) / 2} ${a[1]} ${(a[0] + b[0]) / 2} ${b[1]} ${b[0]} ${b[1]}`
-                  : `M${a[0]} ${a[1]}L${b[0]} ${b[1]}`;
-              return (
-                <g
-                  key={i}
-                  className={
-                    'wg-link ' +
-                    (running && (active === stations[from].id || active === stations[to].id)
-                      ? 'wg-link-active'
-                      : '')
-                  }
-                >
-                  <path d={path} />
-                  {running &&
-                    !reduced &&
-                    (active === stations[from].id || active === stations[to].id) && (
-                      <g className="wg-packet">
-                        <rect x="-4" y="-5" width="8" height="10" rx="1" />
-                        <animateMotion path={path} dur="1.8s" repeatCount="indefinite" />
-                      </g>
-                    )}
-                </g>
-              );
-            })}
-            {stations.map((s, i) => {
-              const [x, y] = positions[i];
-              const iso = variant === 'isometric';
-              return (
-                <g
-                  key={s.id}
-                  id={'wg-node-' + s.id}
-                  className={
-                    'wg-node ' +
-                    (selected === s.id ? 'wg-selected' : '') +
-                    ' ' +
-                    (active === s.id ? 'wg-active' : '')
-                  }
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Открыть участок ${s.name}`}
-                  aria-expanded={selected === s.id}
-                  aria-controls={selected === s.id ? 'wg-process' : undefined}
-                  onClick={() => choose(s.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      choose(s.id);
-                    }
-                  }}
-                >
-                  {iso ? (
-                    <>
-                      <polygon
-                        className="wg-foot"
-                        points={`${x - 56},${y} ${x},${y + 28} ${x + 56},${y} ${x + 56},${y + 20} ${x},${y + 48} ${x - 56},${y + 20}`}
-                      />
-                      <path className="wg-seam" d={`M${x} ${y + 28}v20`} />
-                      <polygon className="wg-face" points={face(x, y, 56)} />
-                      <StationModel station={s} x={x} y={y} />
-                    </>
-                  ) : (
-                    <>
-                      <rect
-                        className="wg-flat"
-                        x={x - 40}
-                        y={y - 40}
-                        width="80"
-                        height="80"
-                        rx={variant === 'network' ? 22 : 14}
-                      />
-                      <s.Icon x={x - 17} y={y - 17} width="34" height="34" strokeWidth="1.4" />
-                    </>
-                  )}
-                  <text x={x} y={y + (iso ? 83 : 68)} className="wg-name" textAnchor="middle">
-                    {s.name}
-                  </text>
-                  <text x={x} y={y + (iso ? 105 : 91)} className="wg-sub" textAnchor="middle">
-                    {s.sub}
-                  </text>
-                  {active === s.id && (
-                    <rect
-                      className="wg-node-running"
-                      x={x + 28}
-                      y={y - 48}
-                      width="8"
-                      height="8"
-                      rx="1"
-                    />
-                  )}
-                </g>
-              );
-            })}
-          </motion.g>
-        </svg>
-        <div className="wg-source-tags">
-          <span>
-            <Send size={15} />
-            Telegram
-          </span>
-          <span>
-            <Layers size={15} />
-            TikTok
-          </span>
-          <span>
-            <FileText size={15} />
-            Markdown
-          </span>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={variant}
+          className={`wg-scene wg-scene-${variant} ${running ? 'wg-running' : ''}`}
+          initial={{ opacity: 0, y: 14, filter: 'blur(6px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          exit={{ opacity: 0, y: -8, filter: 'blur(6px)' }}
+          transition={{ duration: reduced ? 0 : 0.45, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {variant === 'iso' ? (
+            hasWebGL() ? (
+              <SceneBoundary fallback={<ConsoleView {...view} />}>
+                <Suspense fallback={<SceneLoading />}>
+                  <IsoView {...view} />
+                </Suspense>
+              </SceneBoundary>
+            ) : (
+              <ConsoleView {...view} />
+            )
+          ) : variant === 'console' ? (
+            <ConsoleView {...view} />
+          ) : (
+            <DialView {...view} />
+          )}
+        </motion.div>
+      </AnimatePresence>
+      {variant !== 'console' && (
+        <div className="wg-mobile-nodes">
+          {stations.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => choose(s.id)}
+              style={{ ['--tint' as string]: s.tint }}
+            >
+              <s.Icon size={18} weight="duotone" />
+              {s.name}
+              <StatusIcon kind={states[s.id]} size={14} />
+            </button>
+          ))}
         </div>
-      </div>
-      <div className="wg-mobile-nodes">
-        {stations.map((s) => (
-          <button key={s.id} onClick={() => choose(s.id)}>
-            <s.Icon size={17} />
-            {s.name}
-          </button>
-        ))}
-      </div>
+      )}
       <AnimatePresence>
         {station && (
           <motion.aside
@@ -452,52 +288,84 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
             ref={panel}
             aria-label={`Процесс ${station.name}`}
             className="wg-process-panel"
-            initial={{ x: 60, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 60, opacity: 0 }}
-            transition={{ duration: reduced ? 0 : 0.3, ease: [0.22, 1, 0.36, 1] }}
+            initial={{ x: 48, opacity: 0, scale: 0.98 }}
+            animate={{ x: 0, opacity: 1, scale: 1 }}
+            exit={{ x: 48, opacity: 0, scale: 0.98 }}
+            transition={reduced ? { duration: 0 } : { type: 'spring', bounce: 0.12, duration: 0.5 }}
           >
             <div className="wg-panel-top">
               <span>Процесс / Демо</span>
               <button className="ec-icon" aria-label="Закрыть процесс" onClick={close}>
-                <X size={20} />
+                <XIcon size={20} />
               </button>
             </div>
-            <div className="wg-panel-title">
-              <station.Icon size={26} />
-              <h3>{station.name}</h3>
-              <ThinkingGlyph active={running} />
+            <div className="wg-panel-title" style={{ ['--tint' as string]: station.tint }}>
+              <span className="wg-panel-icon">
+                <station.Icon size={24} weight="duotone" />
+              </span>
+              <div>
+                <h3>{station.name}</h3>
+                <small>{station.sub}</small>
+              </div>
             </div>
             <div className="wg-panel-source">
-              <FileText size={15} />
+              <FileTextIcon size={16} />
               {station.steps.at(-1)}
-              <span>{finished ? 'Готово' : running ? 'В работе' : 'Ожидает запуска'}</span>
+              <StatusBadge
+                kind={panelState}
+                label={
+                  panelState === 'done'
+                    ? 'Готово'
+                    : panelState === 'run'
+                      ? 'В работе'
+                      : panelState === 'pause'
+                        ? 'Пауза'
+                        : 'Ожидает запуска'
+                }
+              />
             </div>
             <ol className="wg-steps" aria-live="polite">
-              {station.steps.map((label, i) => (
-                <li key={label} className={step > i ? 'is-done' : step === i ? 'is-current' : ''}>
-                  <span>{step > i ? <Check size={13} /> : i + 1}</span>
-                  <div>
-                    {label}
-                    <small>
-                      {step > i
-                        ? 'Завершено'
-                        : step === i && running
-                          ? 'Выполняется…'
-                          : step === i
-                            ? 'Остановлено'
-                            : 'Ожидание'}
-                    </small>
-                  </div>
-                </li>
-              ))}
+              {station.steps.map((label, i) => {
+                const kind: StatusKind =
+                  step > i ? 'done' : step === i ? (running ? 'run' : 'pause') : 'wait';
+                return (
+                  <li key={label} className={step > i ? 'is-done' : step === i ? 'is-current' : ''}>
+                    <span className="wg-step-icon">
+                      <StatusIcon kind={kind} size={18} key={kind} />
+                    </span>
+                    <div>
+                      {label}
+                      <small>
+                        {step > i
+                          ? 'Завершено'
+                          : step === i && running
+                            ? 'Выполняется…'
+                            : step === i
+                              ? 'Остановлено'
+                              : 'Ожидание'}
+                      </small>
+                    </div>
+                    {step === i && running && (
+                      <motion.i
+                        className="wg-step-scan"
+                        layoutId="wg-step-scan"
+                        transition={{ type: 'spring', bounce: 0.1, duration: 0.28 }}
+                      />
+                    )}
+                  </li>
+                );
+              })}
             </ol>
             <div className="wg-panel-actions">
               <button
-                className="ec-button ec-white"
+                className={'ec-button ec-white ' + (running ? 'is-running' : '')}
                 onClick={() => (running ? stop() : void run(cycle))}
               >
-                {running ? <Square size={13} /> : <Play size={13} />}{' '}
+                {running ? (
+                  <StopIcon size={14} weight="fill" />
+                ) : (
+                  <PlayIcon size={14} weight="fill" />
+                )}
                 {running
                   ? cycle
                     ? 'Остановить цикл'
@@ -506,32 +374,45 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
                     ? 'Повторить цикл'
                     : 'Запустить участок'}
               </button>
-              {finished && (
-                <button
-                  className="ec-button"
-                  onClick={() =>
-                    downloadText(
-                      'e-content-example.md',
-                      '# e-content\n\nДемонстрационный цикл дизайн-системы.\n\n' +
-                        events.map((e) => '- ' + e).join('\n'),
-                    )
-                  }
-                >
-                  <ArrowDownToLine size={15} />
-                  Скачать Markdown
-                </button>
-              )}
+              <AnimatePresence>
+                {finished && (
+                  <motion.button
+                    className="ec-button ec-glass"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() =>
+                      downloadText(
+                        'e-content-example.md',
+                        '# e-content\n\nДемонстрационный цикл дизайн-системы.\n\n' +
+                          events.map((e) => '- ' + e).join('\n'),
+                      )
+                    }
+                  >
+                    <DownloadSimpleIcon size={16} className="ec-ico-drop" />
+                    Скачать Markdown
+                  </motion.button>
+                )}
+              </AnimatePresence>
             </div>
             {events.length > 0 && (
               <div className="wg-events">
                 <h4>Материалы</h4>
-                {events.map((event, i) => (
-                  <div key={i}>
-                    <FileText size={14} />
-                    {event}
-                    <Check size={12} />
-                  </div>
-                ))}
+                <AnimatePresence initial={false}>
+                  {events.map((event) => (
+                    <motion.div
+                      key={event}
+                      layout
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ type: 'spring', bounce: 0.2, duration: 0.45 }}
+                    >
+                      <FileTextIcon size={15} />
+                      {event}
+                      <CheckIcon size={13} weight="bold" />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
             )}
             <div className="wg-panel-bottom">

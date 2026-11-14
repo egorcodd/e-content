@@ -2,137 +2,734 @@
   position: relative;
 }
 .wg-scene {
-  height: 580px;
   position: relative;
-  margin: 12px calc(-1 * var(--page-gutter)) 0;
+  isolation: isolate;
+  margin: 18px 0 0;
+}
+.wg-scene-iso,
+.wg-scene-dial {
+  height: 600px;
+  margin-left: calc(-1 * var(--page-gutter));
+  margin-right: calc(-1 * var(--page-gutter));
+}
+
+/* ── loading / 3D stage ─────────────────────────────── */
+.wg-loading {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.wg-loading-tiles {
+  display: flex;
+  gap: 6px;
+}
+.wg-loading-tiles > i {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: #1c1c1c;
+  border: 1px solid #2a2a2a;
+  rotate: 45deg;
+  scale: 1 0.58;
+  animation: wg-loading 1.4s var(--ease-in-out) infinite;
+}
+.wg-loading-tiles > i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.wg-loading-tiles > i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.wg-iso {
+  position: absolute;
+  inset: 0;
+}
+.wg-iso > div:first-child {
+  mask-image:
+    linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent),
+    linear-gradient(transparent, #000 5%, #000 95%, transparent);
+  mask-composite: intersect;
+}
+.wg-iso-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
   overflow: hidden;
 }
-.wg-svg {
+.wg-iso canvas {
+  touch-action: pan-y;
+}
+.wg-iso-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+  pointer-events: auto;
+  translate: -50% 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 12px 7px;
+  border-radius: 12px;
+  background: #0d0d0dcc;
+  border: 1px solid #262626;
+  white-space: nowrap;
+  text-align: center;
+  transition:
+    opacity 0.4s var(--ease-out),
+    border-color 0.3s var(--ease-out),
+    background-color 0.3s var(--ease-out),
+    translate 0.5s var(--ease-spring);
+}
+.wg-iso-label > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.wg-iso-label strong {
+  font-size: 14px;
+  font-weight: 560;
+  color: #ededed;
+}
+.wg-iso-label > small {
+  font-size: 12px;
+  color: #8d8d8d;
+  line-height: 1.3;
+}
+.wg-iso-label.is-hovered,
+.wg-iso-label:focus-visible,
+.wg-iso-label.wg-selected {
+  border-color: #4a4a4a;
+  background: #141414;
+  translate: -50% 10px;
+}
+.wg-iso-label.wg-active {
+  border-color: color-mix(in oklab, var(--st-run) 55%, #262626);
+  box-shadow: 0 0 22px -6px var(--st-run);
+}
+
+/* ── «Пульт» bento ─────────────────────────────────── */
+.wg-console {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-areas:
+    'telegram collector collector comments'
+    'tiktok collector collector ideas'
+    'materials materials analytics analytics';
+  gap: 12px;
+}
+.wg-tile {
+  --tint: #e9e9e9;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 218px;
+  padding: 18px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #131313, #0f0f0f);
+  border: 1px solid #222;
+  text-align: left;
+  color: var(--text);
+  overflow: hidden;
+  transition:
+    border-color 0.35s var(--ease-out),
+    box-shadow 0.45s var(--ease-out),
+    translate 0.5s var(--ease-spring),
+    scale 0.5s var(--ease-spring);
+}
+.wg-tile:hover {
+  border-color: #333;
+  translate: 0 -2px;
+}
+.wg-tile:active {
+  scale: 0.985;
+  transition-duration: 0.1s;
+}
+.wg-tile.wg-selected {
+  border-color: #6a6a6a;
+}
+.wg-tile.wg-active {
+  border-color: color-mix(in oklab, var(--st-run) 50%, #222);
+  box-shadow:
+    0 0 0 4px color-mix(in oklab, var(--st-run) 10%, transparent),
+    0 18px 50px -24px var(--st-run);
+}
+.wg-tile.is-done {
+  border-color: color-mix(in oklab, var(--st-done) 26%, #222);
+}
+.wg-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.wg-tile-icon,
+.wg-panel-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  color: var(--tint, #e9e9e9);
+  background: color-mix(in oklab, var(--tint, #fff) 10%, #151515);
+  border: 1px solid color-mix(in oklab, var(--tint, #fff) 18%, #262626);
+}
+.wg-tile-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.wg-tile-name > strong {
+  font-size: 15px;
+  font-weight: 560;
+  line-height: 1.3;
+}
+.wg-tile-name > small {
+  color: #8a8a8a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wg-tile-index {
+  align-self: flex-start;
+  font:
+    12px Consolas,
+    monospace;
+  color: #5f5f5f;
+}
+.wg-tile-viz {
+  position: relative;
+  display: block;
+  flex: 1;
+  min-height: 74px;
+}
+.wg-tile-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.wg-tile-foot .ec-status {
+  min-height: 28px;
+  padding: 3px 11px 3px 7px;
+  font-size: 12px;
+}
+.wg-tile-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font:
+    12px Consolas,
+    monospace;
+  color: #7c7c7c;
+  min-width: 0;
+  transition: color 0.3s;
+}
+.wg-tile:hover .wg-tile-file {
+  color: #d6d6d6;
+}
+.wg-tile-progress {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 0;
+  height: 2px;
+  background: transparent;
+}
+.wg-tile-progress > i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--st-run);
+  transform-origin: left;
+  transition: scale 0.5s var(--ease-out);
+}
+.wg-tile.is-done .wg-tile-progress > i {
+  background: var(--st-done);
+}
+.wg-tile.is-pause .wg-tile-progress > i {
+  background: var(--st-pause);
+}
+
+/* micro-visualisations: calm when idle, animated only inside .wg-active */
+.viz-feed {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  mask-image: linear-gradient(transparent, #000 28%, #000 80%, transparent);
+}
+.viz-feed-track {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 6px;
+}
+.viz-feed-track > i {
+  height: 15px;
+  border-radius: 8px 8px 8px 3px;
+  background: #1d1d1d;
+  border: 1px solid #262626;
+}
+.viz-feed-track > i:nth-child(3n + 1) {
+  border-color: color-mix(in oklab, var(--tg) 40%, #262626);
+  background: color-mix(in oklab, var(--tg) 14%, #161616);
+}
+.wg-active .viz-feed-track {
+  animation: viz-up 2.6s linear infinite;
+}
+.viz-reels {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.viz-reels-track {
+  display: flex;
+  gap: 7px;
+  height: 100%;
+  width: max-content;
+}
+.viz-reels-track > i {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 9 / 16;
+  height: 100%;
+  max-height: 96px;
+  border-radius: 7px;
+  background: linear-gradient(160deg, #222, #121212);
+  border: 1px solid #292929;
+  color: #6f6f6f;
+}
+.viz-reels-track > i::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  height: 2px;
+  width: calc(var(--p) - 12px);
+  border-radius: 2px;
+  background: var(--tt);
+}
+.wg-active .viz-reels-track {
+  animation: viz-left 5s linear infinite;
+}
+.viz-dedup {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 18px;
+  height: 100%;
+}
+.viz-inbox {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: auto;
+  border-top: 1px solid #1f1f1f;
+}
+.viz-inbox > span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  border-bottom: 1px solid #1f1f1f;
+  font-size: 13px;
+  color: #bdbdbd;
+  transition:
+    color 0.4s var(--ease-out),
+    opacity 0.4s var(--ease-out);
+}
+.viz-inbox i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tint);
+  flex-shrink: 0;
+}
+.viz-inbox b {
+  font-weight: 450;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: line-through transparent;
+  transition: text-decoration-color 0.4s var(--ease-out);
+}
+.viz-inbox em {
+  margin-left: auto;
+  font:
+    12px Consolas,
+    monospace;
+  font-style: normal;
+  color: #6c6c6c;
+}
+.viz-inbox > .is-duplicate {
+  color: #6a6a6a;
+}
+.viz-inbox > .is-duplicate b {
+  text-decoration-color: var(--st-pause);
+}
+.viz-inbox > .is-duplicate em {
+  color: var(--st-pause);
+}
+.wg-active .viz-inbox > span {
+  animation: viz-row 1.8s var(--ease-out) infinite;
+}
+.viz-dedup-number {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.viz-dedup-number > span {
+  font-size: 54px;
+  font-weight: 450;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.viz-dedup-number > small {
+  color: #8a8a8a;
+  font-size: 13px;
+}
+.viz-dedup-bar {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: repeating-linear-gradient(135deg, #2a2a2a 0 3px, transparent 3px 6px);
+  overflow: hidden;
+}
+.viz-dedup-bar > i {
+  position: absolute;
+  inset: 0;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--tg) 0 60%, var(--tt) 60% 100%);
+  transform-origin: left;
+  transition: scale 0.6s var(--ease-out);
+}
+.wg-active .viz-dedup-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, #ffffff80, transparent);
+  width: 30%;
+  animation: viz-scan 1.2s var(--ease-in-out) infinite;
+}
+.viz-dedup-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 12px;
+  color: #8f8f8f;
+}
+.viz-dedup-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.viz-dedup-legend > span::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--tint, transparent);
+  border: 1px solid var(--tint, #555);
+}
+.viz-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+.viz-thread > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.viz-thread > span.is-reply {
+  padding-left: 18px;
+}
+.viz-thread b {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #2a2a2a;
+  flex-shrink: 0;
+}
+.viz-thread i {
+  height: 13px;
+  border-radius: 7px;
+  background: #1e1e1e;
+  border: 1px solid #282828;
+}
+.viz-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: 38px;
+  padding: 0 7px;
+}
+.viz-typing > em {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #777;
+}
+.wg-active .viz-typing > em {
+  animation: viz-type 1s var(--ease-in-out) infinite;
+}
+.wg-active .viz-typing > em:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.wg-active .viz-typing > em:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.viz-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px;
+}
+.viz-chips > i {
+  font-style: normal;
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid #2b2b2b;
+  color: #9a9a9a;
+}
+.wg-active .viz-chips > i,
+.wg-tile.is-done .viz-chips > i:nth-child(-n + 3) {
+  animation: viz-chip 2.4s var(--ease-out) infinite both;
+}
+.wg-tile.is-done .viz-chips > i:nth-child(-n + 3) {
+  animation: none;
+  color: #eee;
+  border-color: #555;
+}
+.viz-docs {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  height: 100%;
+  align-items: flex-end;
+}
+.viz-docs > i {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: min(150px, 30%);
+  padding: 10px;
+  border-radius: 8px;
+  background: #171717;
+  border: 1px solid #292929;
+  transition: translate 0.5s var(--ease-spring);
+}
+.viz-docs > i:nth-child(2) {
+  translate: 0 -8px;
+}
+.viz-docs > i:nth-child(3) {
+  translate: 0 -16px;
+  background: #1c1c1c;
+}
+.viz-docs b {
+  font:
+    500 11px Consolas,
+    monospace;
+  color: #bdbdbd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.viz-docs em {
+  height: 4px;
+  border-radius: 2px;
+  background: #2a2a2a;
+}
+.viz-docs em:last-child {
+  width: 60%;
+}
+.wg-active .viz-docs > i:nth-child(3) {
+  animation: viz-doc 1.6s var(--ease-spring) infinite;
+}
+.wg-tile:hover .viz-docs > i:nth-child(3) {
+  translate: 0 -22px;
+}
+.viz-spark {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.viz-spark-line {
+  fill: none;
+  stroke: #e8e8e8;
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+.wg-active .viz-spark-line {
+  stroke: var(--st-run);
+  stroke-dasharray: 100;
+  animation: viz-draw 1.8s var(--ease-out) infinite;
+}
+
+/* ── «Циферблат» ───────────────────────────────────── */
+.wg-dial-stage {
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+.wg-dial {
+  position: relative;
+  height: min(calc(100% - 110px), 560px);
+  aspect-ratio: 1;
+  transition: translate 0.7s var(--ease-spring);
+}
+.wg-dial > svg {
   width: 100%;
   height: 100%;
   display: block;
   overflow: visible;
 }
-.wg-grid path {
-  stroke: #343434;
-  stroke-width: 0.7;
-  fill: none;
+.wg-tick {
+  stroke: #262626;
+  stroke-width: 5;
+  stroke-linecap: round;
+  transition: stroke 0.35s var(--ease-out);
 }
-.wg-link > path {
-  stroke: #454545;
-  stroke-width: 0.9;
-  fill: none;
-  opacity: 0.7;
+.wg-arc.is-marked .wg-tick:not(.is-on) {
+  stroke: #3a3a3a;
 }
-.wg-link-active > path {
-  stroke: #b8b8b8;
-  opacity: 1;
+.wg-tick.is-on {
+  stroke: #e9e9e9;
 }
-.wg-packet rect {
-  fill: #d6d6d6;
-  stroke: #090909;
-  stroke-width: 1;
+.wg-arc.is-run .wg-tick.is-on {
+  stroke: var(--st-run);
 }
-.wg-node {
-  outline: none;
-  cursor: pointer;
-  color: #c8c8c8;
+.wg-arc.is-pause .wg-tick.is-on {
+  stroke: var(--st-pause);
 }
-.wg-wire,
-.wg-stack {
-  stroke: #b4b4b4;
-  fill: #101010;
-  stroke-width: 1.2;
-  stroke-linejoin: round;
+.wg-tick.is-lead {
+  animation: wg-lead 0.8s var(--ease-in-out) infinite alternate;
 }
-.wg-foot {
-  fill: #111;
-  stroke: #666;
-  stroke-width: 1;
+.wg-tick-mark {
+  stroke: #d8d8d8;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0;
+  transition: opacity 0.35s var(--ease-out);
 }
-.wg-face {
-  fill: #171717;
-  stroke: #777;
-  stroke-width: 1.1;
+.wg-arc.is-marked .wg-tick-mark {
+  opacity: 0.35;
 }
-.wg-seam {
-  stroke: #666;
-  stroke-width: 1;
+.wg-hand {
+  fill: #6a6a6a;
+  transition: fill 0.3s;
 }
-.wg-flat {
-  fill: #151515;
-  stroke: #3c3c3c;
-  stroke-width: 1.2;
+.wg-hand.is-run {
+  fill: var(--st-run);
+  filter: drop-shadow(0 0 6px var(--st-run));
 }
-.wg-node:hover .wg-face,
-.wg-node:focus-visible .wg-face,
-.wg-selected .wg-face {
-  fill: #242424;
-  stroke: #efefef;
-  stroke-width: 1.6;
+.wg-hand.is-done {
+  fill: #f0f0f0;
 }
-.wg-node:hover .wg-flat,
-.wg-node:focus-visible .wg-flat,
-.wg-selected .wg-flat {
-  fill: #242424;
-  stroke: #e5e5e5;
-  stroke-width: 1.4;
+.wg-hand.is-pause {
+  fill: var(--st-pause);
 }
-.wg-node:focus-visible .wg-name {
-  fill: white;
-  text-decoration: underline;
-  text-underline-offset: 6px;
-}
-.wg-node:hover .wg-wire,
-.wg-selected .wg-wire {
-  stroke: #f5f5f5;
-}
-.wg-name {
-  font-family: var(--font-sans);
-  font-size: 19px;
-  font-weight: 550;
-  fill: #e6e6e6;
-}
-.wg-sub {
-  font-family: var(--font-sans);
-  font-size: 13px;
-  fill: #949494;
-}
-.wg-active .wg-name {
-  fill: #fff;
-}
-.wg-node-running {
-  fill: #f2f2f2;
-  filter: drop-shadow(0 0 4px #fff6);
-}
-.wg-source-tags {
+.wg-dial-center {
   position: absolute;
-  left: 35px;
-  bottom: 15px;
+  inset: 32%;
   display: flex;
-  gap: 22px;
-  color: #888;
-  font-size: 13px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
 }
-.wg-source-tags > span {
+.wg-dial-caption {
+  font-size: 13px;
+  color: #8c8c8c;
+}
+.wg-dial-value {
+  font-size: clamp(40px, 6vw, 64px);
+  font-weight: 420;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+.wg-dial-step {
+  font-size: 13px;
+  color: #a5a5a5;
+  max-width: 190px;
+  line-height: 1.35;
+  min-height: 2.7em;
+}
+.wg-dial-label {
+  position: absolute;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--text);
+  transition:
+    border-color 0.3s var(--ease-out),
+    background-color 0.3s var(--ease-out);
 }
+.wg-dial-label > svg:first-child {
+  color: var(--tint, #cfcfcf);
+}
+.wg-dial-label > span {
+  display: flex;
+  flex-direction: column;
+}
+.wg-dial-label strong {
+  font-size: 15px;
+  font-weight: 560;
+  line-height: 1.3;
+}
+.wg-dial-label small {
+  color: #858585;
+}
+.wg-dial-label:hover,
+.wg-dial-label:focus-visible,
+.wg-dial-label.wg-selected {
+  border-color: #2f2f2f;
+  background: #121212;
+}
+.wg-dial-label.wg-active {
+  border-color: color-mix(in oklab, var(--st-run) 45%, #2f2f2f);
+}
+
+/* ── mobile station list ───────────────────────────── */
+.wg-mobile-nodes {
+  display: none;
+}
+
+/* ── process panel ─────────────────────────────────── */
 .wg-process-panel {
   position: fixed;
   right: 20px;
-  top: 94px;
+  top: 100px;
   bottom: 20px;
-  width: 380px;
+  width: 384px;
   z-index: 70;
   overflow: auto;
   overscroll-behavior: contain;
-  background: #141414;
-  border: 1px solid #3a3a3a;
-  border-radius: 18px;
-  padding: 24px;
-  box-shadow: -25px 10px 90px #0007;
+  background: linear-gradient(180deg, #161616, #111);
+  border: 1px solid #2f2f2f;
+  border-radius: 22px;
+  padding: 22px 24px 24px;
+  box-shadow:
+    inset 0 1px 0 #ffffff0d,
+    -30px 20px 90px #000a;
   outline: none;
 }
 .wg-panel-top {
@@ -141,94 +738,120 @@
   justify-content: space-between;
   gap: 15px;
   font-size: 13px;
-  color: #999;
-  margin-bottom: 26px;
+  color: #8f8f8f;
+  margin-bottom: 20px;
 }
 .wg-panel-top .ec-icon {
-  margin-right: -7px;
+  margin-right: -8px;
 }
 .wg-panel-title {
   display: flex;
   align-items: center;
-  gap: 13px;
+  gap: 14px;
   margin-bottom: 20px;
 }
-.wg-panel-title > h3 {
+.wg-panel-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+}
+.wg-panel-title h3 {
   font-size: 26px;
-  font-weight: 500;
-  letter-spacing: -0.8px;
-  flex: 1;
+  font-weight: 520;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.wg-panel-title small {
+  color: #8a8a8a;
+  font-size: 13px;
 }
 .wg-panel-source {
   display: flex;
   align-items: center;
-  gap: 8px;
-  border: 1px solid #313131;
-  background: #101010;
-  border-radius: 8px;
-  padding: 12px;
-  font-size: 13px;
+  gap: 9px;
+  border: 1px solid #2a2a2a;
+  background: #0d0d0d;
+  border-radius: 12px;
+  padding: 9px 9px 9px 13px;
+  font:
+    13px Consolas,
+    monospace;
   color: #c5c5c5;
 }
-.wg-panel-source > span {
+.wg-panel-source .ec-status {
   margin-left: auto;
+  font-family: var(--font-sans);
+  min-height: 30px;
+  padding: 4px 11px 4px 8px;
   font-size: 12px;
-  color: #999;
 }
 .wg-steps {
   list-style: none;
   padding: 0;
-  margin: 30px 0 15px;
+  margin: 26px 0 18px;
 }
 .wg-steps > li {
-  display: flex;
-  gap: 13px;
-  align-items: flex-start;
   position: relative;
-  min-height: 78px;
-  color: #999;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  min-height: 70px;
+  padding: 8px 10px;
+  margin: 0 -10px;
+  border-radius: 12px;
+  color: #8f8f8f;
   font-size: 15px;
+  transition: color 0.35s var(--ease-out);
 }
-.wg-steps > li:not(:last-child):before {
+.wg-steps > li > div {
+  position: relative;
+  z-index: 1;
+}
+.wg-steps > li:not(:last-child)::before {
   content: '';
   position: absolute;
   width: 1px;
-  left: 12px;
-  top: 31px;
-  bottom: 8px;
-  background: #333;
+  left: 22px;
+  top: 34px;
+  bottom: -6px;
+  background: linear-gradient(#333, #222);
 }
-.wg-steps > li > span {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.wg-step-icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
   width: 26px;
   height: 26px;
-  border: 1px solid #444;
-  border-radius: 50%;
-  font-size: 12px;
   flex-shrink: 0;
+  border-radius: 50%;
+  background: #121212;
+}
+.wg-step-scan {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--st-run) 13%, transparent),
+    transparent
+  );
+  border: 1px solid color-mix(in oklab, var(--st-run) 22%, transparent);
 }
 .wg-steps small {
   display: block;
   font-size: 12px;
-  color: #777;
-  margin-top: 6px;
+  color: #6f6f6f;
+  margin-top: 4px;
 }
 .wg-steps .is-current {
-  color: #eee;
-}
-.wg-steps .is-current > span {
-  background: #eee;
-  color: #090909;
-  border-color: #eee;
+  color: #f0f0f0;
 }
 .wg-steps .is-done {
-  color: #ddd;
+  color: #d6d6d6;
 }
-.wg-steps .is-done > span {
-  color: #eee;
-  border-color: #999;
+.wg-steps .is-done small {
+  color: color-mix(in oklab, var(--st-done) 70%, #888);
 }
 .wg-panel-actions {
   display: grid;
@@ -238,105 +861,290 @@
   justify-content: center;
 }
 .wg-events {
-  margin-top: 28px;
-  padding-top: 20px;
-  border-top: 1px solid #333;
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid #2a2a2a;
 }
 .wg-events h4 {
   font-size: 13px;
   font-weight: 500;
-  color: #999;
-  margin: 0 0 15px;
+  color: #8f8f8f;
+  margin: 0 0 10px;
 }
 .wg-events > div {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   font-size: 12px;
-  padding: 9px 0;
-  color: #b5b5b5;
+  padding: 8px 0;
+  color: #b8b8b8;
   overflow-wrap: anywhere;
 }
 .wg-events > div > svg:last-child {
   margin-left: auto;
+  color: var(--st-done);
 }
 .wg-panel-bottom {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   font-size: 12px;
-  color: #999;
-  margin-top: 30px;
+  color: #777;
+  margin-top: 28px;
 }
 .wg-demo-dot {
   display: inline-block;
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #999;
+  background: #777;
 }
-.wg-mobile-nodes {
-  display: none;
+
+@keyframes wg-loading {
+  0%,
+  100% {
+    translate: 0 0;
+    background: #1c1c1c;
+  }
+  50% {
+    translate: 0 -6px;
+    background: #2c2c2c;
+  }
+}
+@keyframes wg-lead {
+  to {
+    stroke: #fff;
+  }
+}
+@keyframes viz-up {
+  to {
+    translate: 0 -50%;
+  }
+}
+@keyframes viz-left {
+  to {
+    translate: -50% 0;
+  }
+}
+@keyframes viz-scan {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 340% 0;
+  }
+}
+@keyframes viz-type {
+  0%,
+  100% {
+    translate: 0 0;
+    background: #555;
+  }
+  40% {
+    translate: 0 -3px;
+    background: #ddd;
+  }
+}
+@keyframes viz-chip {
+  0%,
+  100% {
+    color: #9a9a9a;
+    border-color: #2b2b2b;
+  }
+  20% {
+    color: #fff;
+    border-color: var(--st-run);
+    background: color-mix(in oklab, var(--st-run) 14%, transparent);
+  }
+  45% {
+    color: #ddd;
+    border-color: #444;
+    background: transparent;
+  }
+}
+@keyframes viz-doc {
+  0% {
+    translate: 0 -46px;
+    opacity: 0;
+  }
+  45%,
+  100% {
+    translate: 0 -16px;
+    opacity: 1;
+  }
+}
+@keyframes viz-row {
+  0%,
+  100% {
+    background: transparent;
+  }
+  12% {
+    background: linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--st-run) 12%, transparent),
+      transparent
+    );
+  }
+}
+@keyframes viz-draw {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (min-width: 1000px) {
+  .wg-dial-stage.has-selection .wg-dial {
+    translate: -190px 0;
+  }
 }
 @media (min-width: 1500px) {
-  .wg-scene {
-    height: 640px;
+  .wg-scene-iso,
+  .wg-scene-dial {
+    height: 660px;
+  }
+}
+@media (max-width: 1100px) {
+  .wg-console {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      'collector collector telegram'
+      'collector collector tiktok'
+      'comments ideas ideas'
+      'materials materials analytics';
   }
 }
 @media (max-width: 1000px) {
-  .wg-scene {
-    height: 490px;
+  .wg-scene-iso,
+  .wg-scene-dial {
+    height: 520px;
   }
-  .wg-name {
-    font-size: 20px;
-  }
-  .wg-sub {
-    font-size: 14px;
+  .wg-dial-label small {
+    display: none;
   }
 }
-@media (max-width: 650px) {
-  .wg-scene {
-    height: 340px;
-    margin-top: 15px;
+@media (max-width: 760px) {
+  .wg-console {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      'collector collector'
+      'telegram tiktok'
+      'comments ideas'
+      'materials materials'
+      'analytics analytics';
   }
-  .wg-name {
-    font-size: 25px;
-  }
-  .wg-sub {
+  .wg-dial-label {
     display: none;
   }
-  .wg-source-tags {
-    display: none;
+  .wg-scene-dial {
+    height: auto;
+    margin: 18px 0 0;
+  }
+  .wg-dial {
+    width: 100%;
+    height: auto;
   }
   .wg-mobile-nodes {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 5px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 14px;
   }
   .wg-mobile-nodes > button {
     display: flex;
     align-items: center;
     gap: 10px;
-    min-height: 46px;
-    padding: 10px;
-    border-radius: 8px;
+    min-height: 48px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid #222;
+    background: #111;
+    min-width: 0;
     text-align: left;
-    color: #aaa;
+    color: #c4c4c4;
     font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .wg-mobile-nodes > button > svg:first-child {
+    color: var(--tint, #cfcfcf);
+  }
+  .wg-mobile-nodes > button > svg:last-child {
+    margin-left: auto;
   }
   .wg-mobile-nodes > button:hover {
-    background: #1a1a1a;
+    border-color: #3a3a3a;
     color: #fff;
+  }
+}
+@media (max-width: 650px) {
+  .wg-scene-iso {
+    height: auto;
+    aspect-ratio: 1.55;
+  }
+  .wg-iso-labels {
+    display: none;
+  }
+  .wg-dial-center {
+    inset: 25%;
+    gap: 4px;
+  }
+  .wg-dial-value {
+    font-size: 40px;
+  }
+  .wg-dial-step {
+    font-size: 12px;
+    min-height: 0;
+  }
+  .wg-dial-center .ec-status {
+    min-height: 28px;
+    padding: 3px 10px 3px 7px;
+    font-size: 12px;
+  }
+  .wg-iso-label > small {
+    display: none;
+  }
+  .wg-iso-label {
+    padding: 4px 9px;
+    translate: -50% 6px;
+  }
+  .wg-iso-label strong {
+    font-size: 12px;
   }
   .wg-process-panel {
     right: 8px;
     top: 84px;
     bottom: 8px;
-    width: min(380px, calc(100vw - 16px));
-    padding: 21px;
-    border-radius: 14px;
+    width: min(384px, calc(100vw - 16px));
+    padding: 20px;
+    border-radius: 18px;
   }
-  .wg-panel-title > h3 {
-    font-size: 25px;
+  .wg-panel-title h3 {
+    font-size: 24px;
+  }
+}
+@media (max-width: 480px) {
+  .wg-section .ec-segment > button {
+    padding-inline: 10px;
+  }
+  .wg-dial-step {
+    display: none;
+  }
+  .wg-mobile-nodes > button {
+    font-size: 13px;
+    gap: 8px;
+  }
+  .wg-console {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'collector' 'telegram' 'tiktok' 'comments' 'ideas' 'materials' 'analytics';
+  }
+  .wg-tile {
+    min-height: 196px;
+  }
+  .viz-dedup-number > span {
+    font-size: 44px;
   }
 }

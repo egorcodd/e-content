@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  ArrowDownToLine,
-  ArrowLeft,
-  ArrowUpRight,
-  ChevronRight,
-  FileText,
-  Folder,
-  FolderPlus,
-  Layers3,
-  Plus,
-  Search,
-  X,
-} from 'lucide-react';
+  ArrowLeftIcon,
+  ArrowUpRightIcon,
+  CaretRightIcon,
+  DownloadSimpleIcon,
+  FileTextIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  StackIcon,
+  XIcon,
+} from '@phosphor-icons/react';
 import './library-gallery.css';
 
 type LibraryFile = {
@@ -345,7 +345,7 @@ function LibraryDialog({
           onClick={close}
           aria-label="Закрыть окно библиотеки"
         >
-          <X size={20} />
+          <XIcon size={20} />
         </button>
       </div>
       {children}
@@ -452,7 +452,7 @@ function FileDialog({
             notify('Markdown скачан');
           }}
         >
-          <ArrowDownToLine size={16} />
+          <DownloadSimpleIcon size={16} />
           Скачать Markdown
         </button>
       </div>
@@ -531,7 +531,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
               back();
             }}
           >
-            <Folder size={15} />
+            <FolderIcon size={15} />
             Папки
           </button>
           <button
@@ -542,7 +542,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
               back();
             }}
           >
-            <Layers3 size={15} />
+            <StackIcon size={15} />
             Коллекции
           </button>
         </div>
@@ -559,20 +559,20 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
           </button>
           {current && (
             <>
-              <ChevronRight size={14} />
+              <CaretRightIcon size={14} />
               <span>{current.title}</span>
             </>
           )}
         </div>
         <button type="button" className="lib-action" onClick={() => setNewFolder(true)}>
-          <Plus size={16} />
+          <PlusIcon size={16} />
           Новая папка
         </button>
       </div>
       <div className="lib-browser">
         <div className="lib-controls">
           <label className="lib-search">
-            <Search size={17} />
+            <MagnifyingGlassIcon size={17} />
             <input
               type="search"
               name="library-search"
@@ -589,7 +589,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
                 aria-label="Очистить поиск библиотеки"
                 onClick={() => setQuery('')}
               >
-                <X size={15} />
+                <XIcon size={15} />
               </button>
             )}
           </label>
@@ -627,7 +627,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
                     <span className="lib-stack-sheet third" />
                     <span className="lib-stack-sheet second" />
                     <span className="lib-stack-sheet first">
-                      <FileText size={25} strokeWidth={1.2} />
+                      <FileTextIcon size={25} weight="light" />
                       <span>{String(index + 1).padStart(2, '0')}</span>
                     </span>
                   </div>
@@ -636,7 +636,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
                   <strong>{folder.title}</strong>
                   <span>{pluralFiles(folder.files.length)}</span>
                 </div>
-                <ArrowUpRight className="lib-folder-open" size={17} />
+                <ArrowUpRightIcon className="lib-folder-open" size={17} />
                 {variant === 'collections' && (
                   <p className="lib-collection-latest">
                     {folder.files[0]?.title ?? 'Без материалов'}
@@ -646,7 +646,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
             ))}
             {!visibleFolders.length && (
               <div className="lib-empty">
-                <Search size={24} strokeWidth={1.3} />
+                <MagnifyingGlassIcon size={24} weight="light" />
                 <h3>Ничего не найдено</h3>
                 <button type="button" onClick={() => setQuery('')} className="lib-text-action">
                   Сбросить поиск
@@ -693,7 +693,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
               onClick={() => setOpenedFile(file)}
             >
               <span className="lib-file-icon">
-                <FileText size={18} strokeWidth={1.4} />
+                <FileTextIcon size={18} weight="light" />
               </span>
               <span className="lib-file-row-title">
                 <strong>{file.title}</strong>
@@ -703,13 +703,13 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
               </span>
               <span className="lib-row-date">{dateLabel(file.updatedAt)}</span>
               <span className="lib-row-extension">.md</span>
-              <ArrowUpRight size={16} className="lib-row-arrow" />
+              <ArrowUpRightIcon size={16} className="lib-row-arrow" />
             </button>
           ))}
         </div>
         {current && !filteredFiles.length && (
           <div className="lib-empty">
-            <Folder size={27} strokeWidth={1.2} />
+            <FolderIcon size={27} weight="light" />
             <h3>{query ? 'Материалов не найдено' : 'Папка пуста'}</h3>
             <button
               type="button"
@@ -720,7 +720,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
                 'Сбросить поиск'
               ) : (
                 <>
-                  <ArrowLeft size={15} />
+                  <ArrowLeftIcon size={15} />
                   Все папки
                 </>
               )}
@@ -757,7 +757,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
                 Отменить
               </button>
               <button type="submit" className="lib-action lib-action-primary">
-                <FolderPlus size={16} />
+                <FolderPlusIcon size={16} />
                 Создать папку
               </button>
             </div>

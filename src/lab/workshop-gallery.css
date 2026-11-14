@@ -1,0 +1,342 @@
+.wg-section {
+  position: relative;
+}
+.wg-scene {
+  height: 580px;
+  position: relative;
+  margin: 12px calc(-1 * var(--page-gutter)) 0;
+  overflow: hidden;
+}
+.wg-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+.wg-grid path {
+  stroke: #343434;
+  stroke-width: 0.7;
+  fill: none;
+}
+.wg-link > path {
+  stroke: #454545;
+  stroke-width: 0.9;
+  fill: none;
+  opacity: 0.7;
+}
+.wg-link-active > path {
+  stroke: #b8b8b8;
+  opacity: 1;
+}
+.wg-packet rect {
+  fill: #d6d6d6;
+  stroke: #090909;
+  stroke-width: 1;
+}
+.wg-node {
+  outline: none;
+  cursor: pointer;
+  color: #c8c8c8;
+}
+.wg-wire,
+.wg-stack {
+  stroke: #b4b4b4;
+  fill: #101010;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+.wg-foot {
+  fill: #111;
+  stroke: #666;
+  stroke-width: 1;
+}
+.wg-face {
+  fill: #171717;
+  stroke: #777;
+  stroke-width: 1.1;
+}
+.wg-seam {
+  stroke: #666;
+  stroke-width: 1;
+}
+.wg-flat {
+  fill: #151515;
+  stroke: #3c3c3c;
+  stroke-width: 1.2;
+}
+.wg-node:hover .wg-face,
+.wg-node:focus-visible .wg-face,
+.wg-selected .wg-face {
+  fill: #242424;
+  stroke: #efefef;
+  stroke-width: 1.6;
+}
+.wg-node:hover .wg-flat,
+.wg-node:focus-visible .wg-flat,
+.wg-selected .wg-flat {
+  fill: #242424;
+  stroke: #e5e5e5;
+  stroke-width: 1.4;
+}
+.wg-node:focus-visible .wg-name {
+  fill: white;
+  text-decoration: underline;
+  text-underline-offset: 6px;
+}
+.wg-node:hover .wg-wire,
+.wg-selected .wg-wire {
+  stroke: #f5f5f5;
+}
+.wg-name {
+  font-family: var(--font-sans);
+  font-size: 19px;
+  font-weight: 550;
+  fill: #e6e6e6;
+}
+.wg-sub {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  fill: #949494;
+}
+.wg-active .wg-name {
+  fill: #fff;
+}
+.wg-node-running {
+  fill: #f2f2f2;
+  filter: drop-shadow(0 0 4px #fff6);
+}
+.wg-source-tags {
+  position: absolute;
+  left: 35px;
+  bottom: 15px;
+  display: flex;
+  gap: 22px;
+  color: #888;
+  font-size: 13px;
+}
+.wg-source-tags > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.wg-process-panel {
+  position: fixed;
+  right: 20px;
+  top: 94px;
+  bottom: 20px;
+  width: 380px;
+  z-index: 70;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #141414;
+  border: 1px solid #3a3a3a;
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: -25px 10px 90px #0007;
+  outline: none;
+}
+.wg-panel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  font-size: 13px;
+  color: #999;
+  margin-bottom: 26px;
+}
+.wg-panel-top .ec-icon {
+  margin-right: -7px;
+}
+.wg-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 20px;
+}
+.wg-panel-title > h3 {
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.8px;
+  flex: 1;
+}
+.wg-panel-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #313131;
+  background: #101010;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  color: #c5c5c5;
+}
+.wg-panel-source > span {
+  margin-left: auto;
+  font-size: 12px;
+  color: #999;
+}
+.wg-steps {
+  list-style: none;
+  padding: 0;
+  margin: 30px 0 15px;
+}
+.wg-steps > li {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  position: relative;
+  min-height: 78px;
+  color: #999;
+  font-size: 15px;
+}
+.wg-steps > li:not(:last-child):before {
+  content: '';
+  position: absolute;
+  width: 1px;
+  left: 12px;
+  top: 31px;
+  bottom: 8px;
+  background: #333;
+}
+.wg-steps > li > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #444;
+  border-radius: 50%;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.wg-steps small {
+  display: block;
+  font-size: 12px;
+  color: #777;
+  margin-top: 6px;
+}
+.wg-steps .is-current {
+  color: #eee;
+}
+.wg-steps .is-current > span {
+  background: #eee;
+  color: #090909;
+  border-color: #eee;
+}
+.wg-steps .is-done {
+  color: #ddd;
+}
+.wg-steps .is-done > span {
+  color: #eee;
+  border-color: #999;
+}
+.wg-panel-actions {
+  display: grid;
+  gap: 10px;
+}
+.wg-panel-actions .ec-button {
+  justify-content: center;
+}
+.wg-events {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #333;
+}
+.wg-events h4 {
+  font-size: 13px;
+  font-weight: 500;
+  color: #999;
+  margin: 0 0 15px;
+}
+.wg-events > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 9px 0;
+  color: #b5b5b5;
+  overflow-wrap: anywhere;
+}
+.wg-events > div > svg:last-child {
+  margin-left: auto;
+}
+.wg-panel-bottom {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #999;
+  margin-top: 30px;
+}
+.wg-demo-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #999;
+}
+.wg-mobile-nodes {
+  display: none;
+}
+@media (min-width: 1500px) {
+  .wg-scene {
+    height: 640px;
+  }
+}
+@media (max-width: 1000px) {
+  .wg-scene {
+    height: 490px;
+  }
+  .wg-name {
+    font-size: 20px;
+  }
+  .wg-sub {
+    font-size: 14px;
+  }
+}
+@media (max-width: 650px) {
+  .wg-scene {
+    height: 340px;
+    margin-top: 15px;
+  }
+  .wg-name {
+    font-size: 25px;
+  }
+  .wg-sub {
+    display: none;
+  }
+  .wg-source-tags {
+    display: none;
+  }
+  .wg-mobile-nodes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .wg-mobile-nodes > button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 46px;
+    padding: 10px;
+    border-radius: 8px;
+    text-align: left;
+    color: #aaa;
+    font-size: 14px;
+  }
+  .wg-mobile-nodes > button:hover {
+    background: #1a1a1a;
+    color: #fff;
+  }
+  .wg-process-panel {
+    right: 8px;
+    top: 84px;
+    bottom: 8px;
+    width: min(380px, calc(100vw - 16px));
+    padding: 21px;
+    border-radius: 14px;
+  }
+  .wg-panel-title > h3 {
+    font-size: 25px;
+  }
+}

@@ -9,6 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 5186",
     "check:ui": "node scripts/check-lab.mjs",
+    "check:scenarios": "node scripts/check-scenarios.mjs",
+    "check:library": "node scripts/check-library.mjs",
     "format": "prettier --write src scripts index.html vite.config.ts *.json README.md",
     "format:check": "prettier --check src scripts index.html vite.config.ts *.json README.md"
   },

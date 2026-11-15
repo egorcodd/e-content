@@ -6,6 +6,7 @@ import {
   TelegramLogoIcon,
   TiktokLogoIcon,
   TrayArrowDownIcon,
+  CircuitryIcon,
 } from '@phosphor-icons/react';
 import type { StatusKind } from '../shared';
 
@@ -82,7 +83,31 @@ export const stations = [
     steps: ['Снимки показателей', 'Сравнение периодов', 'Динамика площадок', 'report.md'],
   },
 ] as const;
-export type Station = (typeof stations)[number];
+export const orchestrator = {
+  id: 'orchestrator',
+  name: 'Оркестратор',
+  sub: 'Сборка общего результата',
+  Icon: CircuitryIcon,
+  tint: undefined,
+  hex: undefined,
+  at: [0, 0],
+  steps: ['Приём результатов', 'Проверка связей', 'Объединение материалов', 'workspace.md'],
+} as const;
+const hubPositions: Record<(typeof stations)[number]['id'], readonly [number, number]> = {
+  telegram: [-4.5, -1.2],
+  tiktok: [-4.2, 1.6],
+  collector: [-2.1, -1.9],
+  comments: [2.0, -1.85],
+  ideas: [4.3, -0.65],
+  materials: [4.1, 2.15],
+  analytics: [-2.2, 2.15],
+};
+export const hubStations = [
+  ...stations.map((station) => ({ ...station, at: hubPositions[station.id] })),
+  orchestrator,
+];
+export type Station =
+  (typeof stations)[number] | typeof orchestrator | (typeof hubStations)[number];
 
 /** What every workshop view needs to draw and drive the stations. */
 export type ViewProps = {

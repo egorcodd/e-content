@@ -1,4 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
+import { Select } from './Select';
+import { Segment } from './shared';
 import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
@@ -219,7 +230,8 @@ function download(file: LibraryFile) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function GlassFolder({ id, empty = false }: { id: string; empty?: boolean }) {
+function GlassFolder({ empty = false }: { empty?: boolean }) {
+  const id = useId();
   return (
     <svg
       className={`lib-folder-art ${empty ? 'is-empty' : ''}`}
@@ -323,14 +335,19 @@ function LibraryDialog({
   className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const reduced = useReducedMotion();
   useEffect(() => {
     ref.current?.showModal();
     return () => ref.current?.close();
   }, []);
   return (
-    <dialog
+    <motion.dialog
       className={`lib-dialog ${className}`}
       ref={ref}
+      initial={reduced ? false : { opacity: 0, y: 18, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 10, scale: 0.98 }}
+      transition={{ duration: reduced ? 0 : 0.22 }}
       aria-label={title}
       onCancel={(event) => {
         event.preventDefault();
@@ -349,7 +366,7 @@ function LibraryDialog({
         </button>
       </div>
       {children}
-    </dialog>
+    </motion.dialog>
   );
 }
 
@@ -419,29 +436,41 @@ function FileDialog({
           Markdown
         </button>
       </div>
-      {mode === 'preview' ? (
-        <div
-          id="lib-panel-preview"
-          role="tabpanel"
-          aria-labelledby="lib-view-preview"
-          className="lib-file-preview"
-        >
-          <p>{file.text}</p>
-          <h4>Вопросы аудитории</h4>
-          {file.questions.map((question) => (
-            <blockquote key={question}>{question}</blockquote>
-          ))}
-        </div>
-      ) : (
-        <pre
-          id="lib-panel-markdown"
-          role="tabpanel"
-          aria-labelledby="lib-view-markdown"
-          className="lib-markdown"
-        >
-          {markdown(file)}
-        </pre>
-      )}
+      <AnimatePresence mode="wait" initial={false}>
+        {mode === 'preview' ? (
+          <motion.div
+            key="preview"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.14 }}
+            id="lib-panel-preview"
+            role="tabpanel"
+            aria-labelledby="lib-view-preview"
+            className="lib-file-preview"
+          >
+            <p>{file.text}</p>
+            <h4>Вопросы аудитории</h4>
+            {file.questions.map((question) => (
+              <blockquote key={question}>{question}</blockquote>
+            ))}
+          </motion.div>
+        ) : (
+          <motion.pre
+            key="markdown"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.14 }}
+            id="lib-panel-markdown"
+            role="tabpanel"
+            aria-labelledby="lib-view-markdown"
+            className="lib-markdown"
+          >
+            {markdown(file)}
+          </motion.pre>
+        )}
+      </AnimatePresence>
       <div className="lib-dialog-foot">
         <span>.md</span>
         <button
@@ -460,6 +489,33 @@ function FileDialog({
   );
 }
 
+function FolderContents({ children }: { children: ReactNode }) {
+  const measure = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | null>(null);
+  const reduced = useReducedMotion();
+  useLayoutEffect(() => {
+    const node = measure.current;
+    if (!node) return;
+    const observer = new ResizeObserver(() =>
+      setHeight(Math.ceil(node.getBoundingClientRect().height)),
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <motion.div
+      className="lib-content-viewport"
+      initial={false}
+      animate={{ height: height ?? 'auto' }}
+      transition={{ duration: reduced ? 0 : 0.45, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <div ref={measure} className="lib-content-measure">
+        {children}
+      </div>
+    </motion.div>
+  );
+}
+
 export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
   const [folders, setFolders] = useState(samples);
   const [variant, setVariant] = useState<'folders' | 'collections'>('folders');
@@ -470,6 +526,17 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
   const [openedFile, setOpenedFile] = useState<LibraryFile | null>(null);
   const [newFolder, setNewFolder] = useState(false);
   const [folderName, setFolderName] = useState('');
+  const reduced = useReducedMotion();
+  const folderHeading = useRef<HTMLHeadingElement>(null);
+  const returnFolder = useRef<string | null>(null);
+  const contentKey = openedFolder ?? variant;
+  useLayoutEffect(() => {
+    if (openedFolder) folderHeading.current?.focus({ preventScroll: true });
+    else if (returnFolder.current) {
+      document.getElementById(`lib-tile-${returnFolder.current}`)?.focus({ preventScroll: true });
+      returnFolder.current = null;
+    }
+  }, [openedFolder]);
   const current = folders.find((folder) => folder.id === openedFolder);
   const allFiles = useMemo(() => folders.flatMap((folder) => folder.files), [folders]);
   const filteredFiles = useMemo(
@@ -501,6 +568,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
     setQuery('');
   };
   const back = () => {
+    returnFolder.current = openedFolder;
     setOpenedFolder(null);
     setQuery('');
   };
@@ -515,6 +583,16 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
     setQuery('');
     notify(`Папка «${name}» добавлена`);
   };
+  const addSample = () => {
+    if (!current) return;
+    const file = { ...samples[0].files[0], id: `sample-${Date.now().toString(36)}` };
+    setFolders((previous) =>
+      previous.map((folder) =>
+        folder.id === current.id ? { ...folder, files: [...folder.files, file] } : folder,
+      ),
+    );
+    notify('Демоматериал добавлен в папку');
+  };
   return (
     <section id="library" className="lib-section">
       <div className="lib-section-head">
@@ -522,30 +600,19 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
           <span className="lib-section-index">03</span>
           <h2>Библиотека</h2>
         </div>
-        <div className="lib-variant-switch" aria-label="Вариант библиотеки">
-          <button
-            type="button"
-            aria-pressed={variant === 'folders'}
-            onClick={() => {
-              setVariant('folders');
-              back();
-            }}
-          >
-            <FolderIcon size={15} />
-            Папки
-          </button>
-          <button
-            type="button"
-            aria-pressed={variant === 'collections'}
-            onClick={() => {
-              setVariant('collections');
-              back();
-            }}
-          >
-            <StackIcon size={15} />
-            Коллекции
-          </button>
-        </div>
+        <Segment
+          className="lib-variant-switch"
+          label="Вариант библиотеки"
+          value={variant}
+          onChange={(value) => {
+            setVariant(value as 'folders' | 'collections');
+            back();
+          }}
+          values={[
+            { id: 'folders', label: 'Папки', icon: <FolderIcon size={18} /> },
+            { id: 'collections', label: 'Коллекции', icon: <StackIcon size={18} /> },
+          ]}
+        />
       </div>
       <div className="lib-toolbar">
         <div className="lib-breadcrumb">
@@ -569,7 +636,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
           Новая папка
         </button>
       </div>
-      <div className="lib-browser">
+      <div className="lib-browser ec-glow">
         <div className="lib-controls">
           <label className="lib-search">
             <MagnifyingGlassIcon size={17} />
@@ -593,177 +660,302 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
               </button>
             )}
           </label>
-          <label className="lib-sort">
-            <span className="lib-visually-hidden">Сортировать материалы</span>
-            <select
-              name="library-sort"
-              aria-label="Сортировать материалы"
+          <div className="lib-sort">
+            <Select
+              label="Сортировать материалы"
               value={sort}
-              onChange={(event) => setSort(event.target.value)}
-            >
-              <option value="newest">Сначала новые</option>
-              <option value="authors">По авторам</option>
-            </select>
-          </label>
+              onChange={setSort}
+              options={[
+                { value: 'newest', label: 'Сначала новые' },
+                { value: 'authors', label: 'По авторам' },
+              ]}
+            />
+          </div>
         </div>
-        {!current && (
-          <div
-            className={`lib-folder-grid ${variant === 'collections' ? 'lib-collection-grid' : ''}`}
-          >
-            {visibleFolders.map((folder, index) => (
-              <button
-                type="button"
-                key={folder.id}
-                className={`lib-folder-tile ${variant === 'collections' ? 'lib-collection-tile' : ''}`}
-                onClick={() => openFolder(folder.id)}
-                aria-label={`Открыть папку «${folder.title}», ${pluralFiles(folder.files.length)}`}
+        <FolderContents>
+          <LayoutGroup id="library-folders">
+            <AnimatePresence mode="popLayout">
+              <motion.div
+                key={contentKey}
+                className="lib-content"
+                initial={reduced ? false : { opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: reduced ? 0 : 0.25 }}
               >
-                {variant === 'folders' ? (
-                  <div className="lib-folder-visual">
-                    <GlassFolder id={folder.id} empty={!folder.files.length} />
+                {!current && (
+                  <div
+                    className={`lib-folder-grid ${variant === 'collections' ? 'lib-collection-grid' : ''}`}
+                  >
+                    <AnimatePresence mode="popLayout" initial={false}>
+                      {visibleFolders.map((folder, index) => (
+                        <motion.button
+                          type="button"
+                          key={folder.id}
+                          id={`lib-tile-${folder.id}`}
+                          layout="position"
+                          initial={reduced ? false : { opacity: 0, y: 14 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0 }}
+                          transition={{
+                            duration: reduced ? 0 : 0.35,
+                            delay: reduced ? 0 : index * 0.035,
+                          }}
+                          className={`lib-folder-tile ec-glow ${variant === 'collections' ? 'lib-collection-tile' : ''}`}
+                          onClick={() => openFolder(folder.id)}
+                          aria-label={`Открыть папку «${folder.title}», ${pluralFiles(folder.files.length)}`}
+                        >
+                          {variant === 'folders' ? (
+                            <motion.div
+                              className="lib-folder-visual"
+                              layoutId={`folder-art-${folder.id}`}
+                              transition={{ duration: reduced ? 0 : 0.55, ease: [0.16, 1, 0.3, 1] }}
+                            >
+                              <GlassFolder empty={!folder.files.length} />
+                            </motion.div>
+                          ) : (
+                            <div className="lib-stack-visual" aria-hidden="true">
+                              <span className="lib-stack-sheet third" />
+                              <span className="lib-stack-sheet second" />
+                              <span className="lib-stack-sheet first">
+                                <FileTextIcon size={25} />
+                                <span>{String(index + 1).padStart(2, '0')}</span>
+                              </span>
+                            </div>
+                          )}
+                          <div className="lib-folder-name">
+                            <strong>{folder.title}</strong>
+                            <span>{pluralFiles(folder.files.length)}</span>
+                          </div>
+                          <ArrowUpRightIcon className="lib-folder-open" size={17} />
+                          {variant === 'collections' && (
+                            <p className="lib-collection-latest">
+                              {folder.files[0]?.title ?? 'Без материалов'}
+                            </p>
+                          )}
+                        </motion.button>
+                      ))}
+                      {!visibleFolders.length && (
+                        <motion.div
+                          className="lib-empty"
+                          key="folder-search-empty"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: reduced ? 0 : 0.2 }}
+                        >
+                          <span className="lib-empty-search">
+                            <MagnifyingGlassIcon size={32} />
+                          </span>
+                          <h3>Ничего не найдено</h3>
+                          <p>Попробуйте другое название или тему материала.</p>
+                          <button
+                            type="button"
+                            onClick={() => setQuery('')}
+                            className="lib-text-action"
+                          >
+                            Сбросить поиск
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                ) : (
-                  <div className="lib-stack-visual" aria-hidden="true">
-                    <span className="lib-stack-sheet third" />
-                    <span className="lib-stack-sheet second" />
-                    <span className="lib-stack-sheet first">
-                      <FileTextIcon size={25} weight="light" />
-                      <span>{String(index + 1).padStart(2, '0')}</span>
+                )}
+                {current && (
+                  <div className="lib-open-folder">
+                    <motion.div
+                      className="lib-open-folder-art"
+                      layoutId={variant === 'folders' ? `folder-art-${current.id}` : undefined}
+                      transition={{ duration: reduced ? 0 : 0.55, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                      <GlassFolder empty={!current.files.length} />
+                    </motion.div>
+                    <div>
+                      <span className="lib-folder-caption">Открытая папка</span>
+                      <h3 ref={folderHeading} tabIndex={-1}>
+                        {current.title}
+                      </h3>
+                      <p>{pluralFiles(current.files.length)} · Markdown</p>
+                    </div>
+                    <button type="button" className="lib-action" onClick={back}>
+                      <ArrowLeftIcon size={17} />
+                      Все папки
+                    </button>
+                  </div>
+                )}
+                <div className="lib-files-heading">
+                  <h3>
+                    {current
+                      ? query
+                        ? 'Результаты поиска'
+                        : 'Материалы папки'
+                      : query
+                        ? 'Материалы по запросу'
+                        : showAll
+                          ? 'Все материалы'
+                          : 'Недавние материалы'}
+                  </h3>
+                  <div className="lib-files-heading-actions">
+                    <span>
+                      {!current && !query && !showAll && filteredFiles.length > 4
+                        ? `${visibleFiles.length} из ${filteredFiles.length}`
+                        : pluralFiles(filteredFiles.length)}
                     </span>
+                    {!current && !query && filteredFiles.length > 4 && (
+                      <button
+                        type="button"
+                        className="lib-files-expand"
+                        aria-expanded={showAll}
+                        aria-controls="lib-file-list"
+                        onClick={() => setShowAll((previous) => !previous)}
+                      >
+                        {showAll ? 'Свернуть' : 'Все материалы'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <motion.div
+                  layout="size"
+                  id="lib-file-list"
+                  className={`lib-file-list ${current ? 'lib-paper-grid' : ''}`}
+                  transition={{ duration: reduced ? 0 : 0.35 }}
+                >
+                  <AnimatePresence mode="popLayout" initial={false}>
+                    {visibleFiles.map((file, index) => (
+                      <motion.button
+                        type="button"
+                        className={`lib-file-row ec-glow ${current ? 'lib-paper-card' : ''}`}
+                        key={file.id}
+                        layout="position"
+                        initial={
+                          reduced
+                            ? false
+                            : { opacity: 0, y: current ? 28 : 10, rotate: current ? -1.5 : 0 }
+                        }
+                        animate={{ opacity: 1, y: 0, rotate: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{
+                          duration: reduced ? 0 : 0.4,
+                          delay: reduced ? 0 : Math.min(index * 0.04, 0.16),
+                          ease: [0.16, 1, 0.3, 1],
+                        }}
+                        onClick={() => setOpenedFile(file)}
+                      >
+                        {current && <span className="lib-paper-fold" aria-hidden="true" />}
+                        <span className="lib-file-icon">
+                          <FileTextIcon size={21} />
+                        </span>
+                        {current && (
+                          <span className="lib-paper-excerpt">{file.text.split('\n')[0]}</span>
+                        )}
+                        <span className="lib-file-row-title">
+                          <strong>{file.title}</strong>
+                          <span>
+                            {file.topic} · {file.authors} авторов
+                          </span>
+                        </span>
+                        <span className="lib-row-date">{dateLabel(file.updatedAt)}</span>
+                        <span className="lib-row-extension">.md</span>
+                        <ArrowUpRightIcon size={16} className="lib-row-arrow" />
+                      </motion.button>
+                    ))}
+                  </AnimatePresence>
+                </motion.div>
+                {current && !filteredFiles.length && (
+                  <div className="lib-empty">
+                    {query ? (
+                      <span className="lib-empty-search">
+                        <MagnifyingGlassIcon size={32} />
+                      </span>
+                    ) : (
+                      <div className="lib-empty-folder">
+                        <GlassFolder empty />
+                      </div>
+                    )}
+                    <h3>{query ? 'Материалов не найдено' : 'Папка пуста'}</h3>
+                    <p>
+                      {query
+                        ? 'Попробуйте другое слово или сбросьте поиск.'
+                        : 'Добавьте первый материал — он появится здесь отдельным листом.'}
+                    </p>
+                    {!query && (
+                      <button
+                        type="button"
+                        className="lib-action lib-action-primary"
+                        onClick={addSample}
+                      >
+                        <PlusIcon size={18} />
+                        Добавить демоматериал
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="lib-text-action"
+                      onClick={query ? () => setQuery('') : back}
+                    >
+                      {query ? (
+                        'Сбросить поиск'
+                      ) : (
+                        <>
+                          <ArrowLeftIcon size={15} />
+                          Вернуться к папкам
+                        </>
+                      )}
+                    </button>
                   </div>
                 )}
-                <div className="lib-folder-name">
-                  <strong>{folder.title}</strong>
-                  <span>{pluralFiles(folder.files.length)}</span>
-                </div>
-                <ArrowUpRightIcon className="lib-folder-open" size={17} />
-                {variant === 'collections' && (
-                  <p className="lib-collection-latest">
-                    {folder.files[0]?.title ?? 'Без материалов'}
-                  </p>
-                )}
-              </button>
-            ))}
-            {!visibleFolders.length && (
-              <div className="lib-empty">
-                <MagnifyingGlassIcon size={24} weight="light" />
-                <h3>Ничего не найдено</h3>
-                <button type="button" onClick={() => setQuery('')} className="lib-text-action">
-                  Сбросить поиск
+              </motion.div>
+            </AnimatePresence>
+          </LayoutGroup>
+        </FolderContents>
+      </div>
+      <AnimatePresence>
+        {openedFile && (
+          <FileDialog
+            key="file-dialog"
+            file={openedFile}
+            close={() => setOpenedFile(null)}
+            notify={notify}
+          />
+        )}
+        {newFolder && (
+          <LibraryDialog
+            key="new-folder-dialog"
+            title="Новая папка"
+            close={() => setNewFolder(false)}
+          >
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                createFolder();
+              }}
+            >
+              <label className="lib-name-label">
+                Название
+                <input
+                  name="folder-title"
+                  aria-label="Название папки"
+                  required
+                  maxLength={80}
+                  value={folderName}
+                  onChange={(event) => setFolderName(event.target.value)}
+                  placeholder="Например, интервью…"
+                  autoComplete="off"
+                />
+              </label>
+              <div className="lib-dialog-foot">
+                <button type="button" className="lib-action" onClick={() => setNewFolder(false)}>
+                  Отменить
+                </button>
+                <button type="submit" className="lib-action lib-action-primary">
+                  <FolderPlusIcon size={16} />
+                  Создать папку
                 </button>
               </div>
-            )}
-          </div>
+            </form>
+          </LibraryDialog>
         )}
-        <div className="lib-files-heading">
-          <h3>
-            {current
-              ? current.title
-              : query
-                ? 'Материалы по запросу'
-                : showAll
-                  ? 'Все материалы'
-                  : 'Недавние материалы'}
-          </h3>
-          <div className="lib-files-heading-actions">
-            <span>
-              {!current && !query && !showAll && filteredFiles.length > 4
-                ? `${visibleFiles.length} из ${filteredFiles.length}`
-                : pluralFiles(filteredFiles.length)}
-            </span>
-            {!current && !query && filteredFiles.length > 4 && (
-              <button
-                type="button"
-                className="lib-files-expand"
-                aria-expanded={showAll}
-                aria-controls="lib-file-list"
-                onClick={() => setShowAll((previous) => !previous)}
-              >
-                {showAll ? 'Свернуть' : 'Все материалы'}
-              </button>
-            )}
-          </div>
-        </div>
-        <div id="lib-file-list" className="lib-file-list">
-          {visibleFiles.map((file) => (
-            <button
-              type="button"
-              className="lib-file-row"
-              key={file.id}
-              onClick={() => setOpenedFile(file)}
-            >
-              <span className="lib-file-icon">
-                <FileTextIcon size={18} weight="light" />
-              </span>
-              <span className="lib-file-row-title">
-                <strong>{file.title}</strong>
-                <span>
-                  {file.topic} · {file.authors} авторов
-                </span>
-              </span>
-              <span className="lib-row-date">{dateLabel(file.updatedAt)}</span>
-              <span className="lib-row-extension">.md</span>
-              <ArrowUpRightIcon size={16} className="lib-row-arrow" />
-            </button>
-          ))}
-        </div>
-        {current && !filteredFiles.length && (
-          <div className="lib-empty">
-            <FolderIcon size={27} weight="light" />
-            <h3>{query ? 'Материалов не найдено' : 'Папка пуста'}</h3>
-            <button
-              type="button"
-              className="lib-text-action"
-              onClick={query ? () => setQuery('') : back}
-            >
-              {query ? (
-                'Сбросить поиск'
-              ) : (
-                <>
-                  <ArrowLeftIcon size={15} />
-                  Все папки
-                </>
-              )}
-            </button>
-          </div>
-        )}
-      </div>
-      {openedFile && (
-        <FileDialog file={openedFile} close={() => setOpenedFile(null)} notify={notify} />
-      )}
-      {newFolder && (
-        <LibraryDialog title="Новая папка" close={() => setNewFolder(false)}>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              createFolder();
-            }}
-          >
-            <label className="lib-name-label">
-              Название
-              <input
-                name="folder-title"
-                aria-label="Название папки"
-                required
-                maxLength={80}
-                value={folderName}
-                onChange={(event) => setFolderName(event.target.value)}
-                placeholder="Например, интервью…"
-                autoComplete="off"
-              />
-            </label>
-            <div className="lib-dialog-foot">
-              <button type="button" className="lib-action" onClick={() => setNewFolder(false)}>
-                Отменить
-              </button>
-              <button type="submit" className="lib-action lib-action-primary">
-                <FolderPlusIcon size={16} />
-                Создать папку
-              </button>
-            </div>
-          </form>
-        </LibraryDialog>
-      )}
+      </AnimatePresence>
     </section>
   );
 }

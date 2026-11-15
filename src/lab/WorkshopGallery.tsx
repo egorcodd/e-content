@@ -2,6 +2,7 @@ import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode 
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   ArrowCounterClockwiseIcon,
+  ArrowRightIcon,
   CheckIcon,
   DownloadSimpleIcon,
   FileTextIcon,
@@ -17,9 +18,15 @@ import {
   StatusIcon,
   type StatusKind,
 } from './shared';
-import { stations, type ViewProps } from './workshop/stations';
+import { stations, hubStations, orchestrator, type ViewProps } from './workshop/stations';
 import { ConsoleView } from './workshop/ConsoleView';
-import { DialView } from './workshop/DialView';
+import type { SurfaceStyle } from './workshop/IsoView';
+import {
+  connections,
+  waitForStage,
+  type WorkshopTransfer,
+  type WorkshopArrival,
+} from './workshop/workflow';
 import './workshop-gallery.css';
 
 const IsoView = lazy(() => import('./workshop/IsoView'));
@@ -61,13 +68,18 @@ function SceneLoading() {
 }
 
 const variants = [
-  { id: 'iso', label: 'Изометрия' },
-  { id: 'console', label: 'Пульт' },
-  { id: 'dial', label: 'Циферблат' },
+  { id: 'contour', label: 'Контур' },
+  { id: 'mesh', label: 'Сетка' },
+  { id: 'smoke', label: 'Дымка' },
 ];
 
 export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
-  const [variant, setVariant] = useState('iso');
+  const [version, setVersion] = useState<'chain' | 'hub'>('chain');
+  const items = version === 'hub' ? hubStations : stations;
+  const [batch, setBatch] = useState<WorkshopTransfer[]>([]);
+  const [batchArrivals, setBatchArrivals] = useState<WorkshopArrival[]>([]);
+  const [receivedCount, setReceivedCount] = useState(0);
+  const [surface, setSurface] = useState<SurfaceStyle>('smoke');
   const [selected, setSelected] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [cycle, setCycle] = useState(false);
@@ -77,12 +89,14 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
   const [done, setDone] = useState<string[]>([]);
   const [halted, setHalted] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
+  const [transfer, setTransfer] = useState<WorkshopTransfer | null>(null);
+  const [arrival, setArrival] = useState<WorkshopArrival | null>(null);
   const control = useRef<AbortController | null>(null);
   const activeRef = useRef<string | null>(null);
   const panel = useRef<HTMLElement>(null);
   const previous = useRef<HTMLElement | null>(null);
   const reduced = useReducedMotion();
-  const station = stations.find((s) => s.id === selected);
+  const station = items.find((s) => s.id === selected);
   useEffect(() => () => control.current?.abort(), []);
   // a late frame (heavy 3D scene) must not pull focus out of a control the user already chose
   const focusPanel = () =>
@@ -97,6 +111,10 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
     activeRef.current = null;
     setRunning(false);
     setActive(null);
+    setTransfer(null);
+    setArrival(null);
+    setBatch([]);
+    setBatchArrivals([]);
   }
   function close() {
     stop();
@@ -128,6 +146,7 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [panelOpen]);
   async function run(all: boolean) {
+    if (version === 'hub' && selected === 'orchestrator') all = true;
     if (all) {
       previous.current = document.activeElement as HTMLElement;
       if (!selected) focusPanel();
@@ -141,6 +160,7 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
     setDone([]);
     setHalted(null);
     setEvents([]);
+    setReceivedCount(0);
     const nodes = all ? stations : stations.filter((s) => s.id === selected);
     if (!nodes.length) {
       setRunning(false);
@@ -155,22 +175,58 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
         for (let i = 0; i < node.steps.length; i++) {
           if (abort.signal.aborted) return;
           setStep(i);
-          await new Promise<void>((resolve) => {
-            const timer = setTimeout(resolve, all ? 300 : 560);
-            abort.signal.addEventListener(
-              'abort',
-              () => {
-                clearTimeout(timer);
-                resolve();
-              },
-              { once: true },
-            );
-          });
+          await waitForStage(all ? 300 : 560, abort.signal);
         }
         if (abort.signal.aborted) return;
         setStep(node.steps.length);
         setDone((old) => [...old, node.id]);
         setEvents((old) => [`${node.name} / ${node.steps.at(-1)}`, ...old].slice(0, 7));
+        if (all) {
+          const edge = connections.find((connection) => connection.from === node.id);
+          if (edge) {
+            setActive(null);
+            const duration = 850;
+            setTransfer({ ...edge, startedAt: performance.now(), duration });
+            await waitForStage(duration, abort.signal);
+            if (abort.signal.aborted) return;
+            setTransfer(null);
+            setArrival({ ...edge, receivedAt: performance.now() });
+          }
+        }
+      }
+      if (version === 'hub') {
+        setSelected('orchestrator');
+        setActive(null);
+        activeRef.current = 'orchestrator';
+        setStep(-1);
+        const duration = all ? 1400 : 1000;
+        const deliveries: WorkshopTransfer[] = nodes.map((node) => ({
+          from: node.id,
+          to: 'orchestrator',
+          startedAt: performance.now(),
+          duration,
+        }));
+        setBatch(deliveries);
+        await waitForStage(duration, abort.signal);
+        if (abort.signal.aborted) return;
+        setBatch([]);
+        setBatchArrivals(
+          deliveries.map((delivery) => ({
+            from: delivery.from,
+            to: delivery.to,
+            receivedAt: performance.now(),
+          })),
+        );
+        setReceivedCount(nodes.length);
+        setActive('orchestrator');
+        for (let i = 0; i < orchestrator.steps.length; i++) {
+          setStep(i);
+          await waitForStage(320, abort.signal);
+          if (abort.signal.aborted) return;
+        }
+        setStep(orchestrator.steps.length);
+        setDone((old) => [...old, 'orchestrator']);
+        setEvents((old) => ['Оркестратор / workspace.md', ...old].slice(0, 8));
       }
       if (!abort.signal.aborted) {
         setFinished(true);
@@ -180,6 +236,8 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
       if (control.current === abort) {
         setRunning(false);
         setActive(null);
+        setTransfer(null);
+        setBatch([]);
         activeRef.current = null;
         control.current = null;
       }
@@ -187,7 +245,7 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
   }
   const states: Record<string, StatusKind> = {};
   const progress: Record<string, number> = {};
-  for (const s of stations) {
+  for (const s of items) {
     states[s.id] = done.includes(s.id)
       ? 'done'
       : active === s.id
@@ -202,6 +260,20 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
         : 0;
   }
   const view: ViewProps = { selected, active, running, step, states, progress, choose };
+  const fallback =
+    version === 'chain' ? (
+      <ConsoleView {...view} />
+    ) : (
+      <div className="wg-hub-fallback">
+        {hubStations.map((s) => (
+          <button key={s.id} onClick={() => choose(s.id)}>
+            <s.Icon size={24} />
+            <span>{s.name}</span>
+            <StatusIcon kind={states[s.id]} size={15} />
+          </button>
+        ))}
+      </div>
+    );
   const panelState: StatusKind = finished
     ? 'done'
     : running
@@ -212,17 +284,34 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
   return (
     <section id="workshop" className="ec-section wg-section">
       <SectionHeading number="02" title="Цех">
-        <span className="ec-demo">Демо</span>
+        <div className="wg-mode-switch">
+          <Segment
+            label="Версия цеха"
+            value={version}
+            onChange={(id) => {
+              stop();
+              setSelected(null);
+              setDone([]);
+              setEvents([]);
+              setFinished(false);
+              setHalted(null);
+              setStep(-1);
+              setReceivedCount(0);
+              setVersion(id as 'chain' | 'hub');
+            }}
+            values={[
+              { id: 'chain', label: 'V1 · Цепочка' },
+              { id: 'hub', label: 'V2 · Оркестратор' },
+            ]}
+          />
+          <span className="ec-demo">Демо</span>
+        </div>
       </SectionHeading>
       <div className="ec-section-controls">
         <Segment
-          label="Вариант цеха"
-          value={variant}
-          onChange={(id) => {
-            stop();
-            setSelected(null);
-            setVariant(id);
-          }}
+          label="Материал изометрии"
+          value={surface}
+          onChange={(id) => setSurface(id as SurfaceStyle)}
           values={variants}
         />
         <div className="ec-actions">
@@ -238,47 +327,81 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
           </button>
         </div>
       </div>
+      <div className="wg-flow-status" role="status" aria-live="polite" aria-atomic="true">
+        {batch.length > 0 ? (
+          <>
+            <FileTextIcon size={14} />
+            <span>
+              {batch.length === 1
+                ? items.find((s) => s.id === batch[0].from)?.name
+                : `${batch.length} результатов`}
+            </span>
+            <ArrowRightIcon size={14} />
+            <span>Оркестратор</span>
+          </>
+        ) : (
+          transfer && (
+            <>
+              <FileTextIcon size={14} />
+              <span>{items.find((s) => s.id === transfer.from)?.name}</span>
+              <ArrowRightIcon size={14} />
+              <span>{items.find((s) => s.id === transfer.to)?.name}</span>
+              <code>{items.find((s) => s.id === transfer.from)?.steps.at(-1)}</code>
+            </>
+          )
+        )}
+      </div>
+      <span
+        className="sr-only wg-arrival-status"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {arrival &&
+          `${items.find((s) => s.id === arrival.to)?.name}: получен ${items.find((s) => s.id === arrival.from)?.steps.at(-1)}`}
+      </span>
+      <span className="sr-only wg-hub-receipt" role="status" aria-live="polite">
+        {batchArrivals.length > 0 && `Оркестратор: получено результатов ${batchArrivals.length}`}
+      </span>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
-          key={variant}
-          className={`wg-scene wg-scene-${variant} ${running ? 'wg-running' : ''}`}
+          key={version}
+          className={`wg-scene wg-scene-iso ${version === 'hub' ? 'wg-scene-hub' : ''} ${running ? 'wg-running' : ''}`}
           initial={{ opacity: 0, y: 14, filter: 'blur(6px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           exit={{ opacity: 0, y: -8, filter: 'blur(6px)' }}
           transition={{ duration: reduced ? 0 : 0.45, ease: [0.16, 1, 0.3, 1] }}
         >
-          {variant === 'iso' ? (
-            hasWebGL() ? (
-              <SceneBoundary fallback={<ConsoleView {...view} />}>
-                <Suspense fallback={<SceneLoading />}>
-                  <IsoView {...view} />
-                </Suspense>
-              </SceneBoundary>
-            ) : (
-              <ConsoleView {...view} />
-            )
-          ) : variant === 'console' ? (
-            <ConsoleView {...view} />
+          {hasWebGL() ? (
+            <SceneBoundary fallback={fallback}>
+              <Suspense fallback={<SceneLoading />}>
+                <IsoView
+                  {...view}
+                  surface={surface}
+                  transfer={transfer}
+                  arrival={arrival}
+                  fullCycle={cycle || (version === 'hub' && running)}
+                  layout={version}
+                  transfers={batch}
+                  arrivals={batchArrivals}
+                  receivedCount={receivedCount}
+                />
+              </Suspense>
+            </SceneBoundary>
           ) : (
-            <DialView {...view} />
+            fallback
           )}
         </motion.div>
       </AnimatePresence>
-      {variant !== 'console' && (
-        <div className="wg-mobile-nodes">
-          {stations.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => choose(s.id)}
-              style={{ ['--tint' as string]: s.tint }}
-            >
-              <s.Icon size={18} weight="duotone" />
-              {s.name}
-              <StatusIcon kind={states[s.id]} size={14} />
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="wg-mobile-nodes">
+        {items.map((s) => (
+          <button key={s.id} onClick={() => choose(s.id)}>
+            <s.Icon size={18} weight="duotone" />
+            {s.name}
+            <StatusIcon kind={states[s.id]} size={14} />
+          </button>
+        ))}
+      </div>
       <AnimatePresence>
         {station && (
           <motion.aside
@@ -299,7 +422,7 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
                 <XIcon size={20} />
               </button>
             </div>
-            <div className="wg-panel-title" style={{ ['--tint' as string]: station.tint }}>
+            <div className="wg-panel-title">
               <span className="wg-panel-icon">
                 <station.Icon size={24} weight="duotone" />
               </span>
@@ -317,7 +440,9 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
                   panelState === 'done'
                     ? 'Готово'
                     : panelState === 'run'
-                      ? 'В работе'
+                      ? transfer
+                        ? 'Передача файла'
+                        : 'В работе'
                       : panelState === 'pause'
                         ? 'Пауза'
                         : 'Ожидает запуска'
@@ -372,7 +497,9 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
                     : 'Остановить'
                   : cycle
                     ? 'Повторить цикл'
-                    : 'Запустить участок'}
+                    : station.id === 'orchestrator'
+                      ? 'Запустить весь цикл'
+                      : 'Запустить участок'}
               </button>
               <AnimatePresence>
                 {finished && (

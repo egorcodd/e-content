@@ -21,6 +21,8 @@ import {
 import { AnalyticsGallery } from './lab/AnalyticsGallery';
 import { LibraryGallery } from './lab/LibraryGallery';
 import { WorkshopGallery } from './lab/WorkshopGallery';
+import { ScenarioGallery } from './lab/ScenarioGallery';
+import { Select } from './lab/Select';
 import {
   ArrowSwap,
   downloadText,
@@ -41,6 +43,7 @@ const sections = [
   { id: 'workshop', label: 'Цех' },
   { id: 'library', label: 'Библиотека' },
   { id: 'analytics', label: 'Графики' },
+  { id: 'scenarios', label: 'Сценарии' },
   { id: 'typography', label: 'Типографика' },
 ];
 const fonts = [
@@ -128,7 +131,10 @@ export default function LabApp() {
   useEffect(() => {
     const shortcut = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (e.key === '/' && !target.closest('input,textarea,select,[contenteditable=true]')) {
+      if (
+        e.key === '/' &&
+        !target.closest('input,textarea,select,[role=combobox],[contenteditable=true]')
+      ) {
         e.preventDefault();
         document.querySelector<HTMLInputElement>('input[name=sample-search]')?.focus();
       }
@@ -280,8 +286,9 @@ export default function LabApp() {
         <WorkshopGallery notify={notify} />
         <LibraryGallery notify={notify} />
         <AnalyticsGallery />
+        <ScenarioGallery />
         <section id="typography" className="ec-section">
-          <SectionHeading number="05" title="Типографика и знак">
+          <SectionHeading number="06" title="Типографика и знак">
             <Segment
               label="Шрифт интерфейса"
               value={font}
@@ -713,54 +720,37 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
               {
                 id: 'Telegram',
                 label: 'Telegram',
-                icon: <TelegramLogoIcon size={16} weight="fill" className="ec-src-tg" />,
+                icon: <TelegramLogoIcon size={19} weight="regular" />,
               },
               {
                 id: 'TikTok',
                 label: 'TikTok',
-                icon: <TiktokLogoIcon size={16} weight="fill" className="ec-src-tt" />,
+                icon: <TiktokLogoIcon size={19} weight="regular" />,
               },
             ]}
           />
         </div>
-        <label className="ec-field">
-          Материалы
-          <span className="ec-select">
-            <select
-              name="sample-type"
-              aria-label="Тип материалов"
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-            >
-              {['Все материалы', 'Публикации', 'Видео', 'Вопросы'].map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-            <CaretDownIcon size={16} />
-          </span>
-        </label>
-        <label className="ec-field">
-          Период
-          <span className="ec-select">
-            <select
-              name="sample-period"
-              aria-label="Период фильтра"
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-            >
-              {[
-                ['7', '7 дней'],
-                ['14', '14 дней'],
-                ['30', '30 дней'],
-              ].map(([v, t]) => (
-                <option value={v} key={v}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <CaretDownIcon size={16} />
-          </span>
-        </label>
+        <div className="ec-field">
+          <span>Материалы</span>
+          <Select
+            label="Тип материалов"
+            value={type}
+            onChange={setType}
+            options={['Все материалы', 'Публикации', 'Видео', 'Вопросы'].map((value) => ({
+              value,
+              label: value,
+            }))}
+          />
+        </div>
+        <div className="ec-field">
+          <span>Период</span>
+          <Select
+            label="Период фильтра"
+            value={period}
+            onChange={setPeriod}
+            options={['7', '14', '30'].map((value) => ({ value, label: `${value} дней` }))}
+          />
+        </div>
         <button
           className="ec-button ec-white ec-pill"
           onClick={() => setApplied({ platform, type, period })}
@@ -911,46 +901,52 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
           </div>
         </div>
       </div>
-      {modal && (
-        <LabDialog title="Материал" close={() => setModal(false)}>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!title.trim()) return;
-              downloadText(
-                'e-content-material.md',
-                `# ${title.trim()}\n\nДемонстрационный материал дизайн-системы e-content.\n`,
-              );
-              setModal(false);
-              setTitle('');
-              notify('Markdown скачан');
-            }}
-          >
-            <label className="ec-form-field">
-              Название
-              <input
-                name="material-title"
-                aria-label="Название материала"
-                required
-                maxLength={180}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Новая идея…"
-                autoComplete="off"
-              />
-            </label>
-            <div className="ec-dialog-actions">
-              <button type="button" className="ec-button ec-ghost" onClick={() => setModal(false)}>
-                Отмена
-              </button>
-              <button className="ec-button ec-white" type="submit">
-                <DownloadSimpleIcon size={16} className="ec-ico-drop" />
-                Скачать Markdown
-              </button>
-            </div>
-          </form>
-        </LabDialog>
-      )}
+      <AnimatePresence>
+        {modal && (
+          <LabDialog title="Материал" close={() => setModal(false)}>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!title.trim()) return;
+                downloadText(
+                  'e-content-material.md',
+                  `# ${title.trim()}\n\nДемонстрационный материал дизайн-системы e-content.\n`,
+                );
+                setModal(false);
+                setTitle('');
+                notify('Markdown скачан');
+              }}
+            >
+              <label className="ec-form-field">
+                Название
+                <input
+                  name="material-title"
+                  aria-label="Название материала"
+                  required
+                  maxLength={180}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Новая идея…"
+                  autoComplete="off"
+                />
+              </label>
+              <div className="ec-dialog-actions">
+                <button
+                  type="button"
+                  className="ec-button ec-ghost"
+                  onClick={() => setModal(false)}
+                >
+                  Отмена
+                </button>
+                <button className="ec-button ec-white" type="submit">
+                  <DownloadSimpleIcon size={16} className="ec-ico-drop" />
+                  Скачать Markdown
+                </button>
+              </div>
+            </form>
+          </LabDialog>
+        )}
+      </AnimatePresence>
     </section>
   );
 }

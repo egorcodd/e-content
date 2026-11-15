@@ -81,11 +81,13 @@ try {
   await page.getByRole('textbox', { name: 'Поиск материалов', exact: true }).fill('собеседование');
   assert.equal(await page.locator('.ec-example-results>button').count(), 0);
   await page.getByRole('textbox', { name: 'Поиск материалов', exact: true }).fill('');
-  await page.getByRole('combobox', { name: 'Период фильтра', exact: true }).selectOption('7');
+  await page.getByRole('combobox', { name: 'Период фильтра', exact: true }).click();
+  await page.getByRole('option', { name: '7 дней', exact: true }).click();
   await page.getByRole('button', { name: 'Применить', exact: true }).click();
   assert.equal(await page.locator('.ec-example-results>button').count(), 3);
   assert.equal(await page.locator('.ec-match-count>strong').innerText(), '3');
-  await page.getByRole('combobox', { name: 'Период фильтра', exact: true }).selectOption('30');
+  await page.getByRole('combobox', { name: 'Период фильтра', exact: true }).click();
+  await page.getByRole('option', { name: '30 дней', exact: true }).click();
   await page.getByRole('button', { name: 'Применить', exact: true }).click();
   assert.equal(await page.locator('.ec-example-results>button').count(), 6);
   await page
@@ -165,14 +167,16 @@ try {
   await page.getByText('Черновик удалён').waitFor();
   checks.push('hold-to-confirm-button');
   await page.locator('#workshop').scrollIntoViewIfNeeded();
-  for (const variant of ['Пульт', 'Циферблат', 'Изометрия']) {
+  await page.locator('.wg-iso canvas').waitFor();
+  assert.equal(await page.locator('.wg-iso').getAttribute('data-surface'), 'smoke');
+  for (const variant of ['Сетка', 'Дымка', 'Контур']) {
     await page
-      .getByRole('group', { name: 'Вариант цеха' })
+      .getByRole('group', { name: 'Материал изометрии' })
       .getByRole('button', { name: variant, exact: true })
       .click();
     assert.equal(
       await page
-        .getByRole('group', { name: 'Вариант цеха' })
+        .getByRole('group', { name: 'Материал изометрии' })
         .getByRole('button', { name: variant, exact: true })
         .getAttribute('aria-pressed'),
       'true',
@@ -182,10 +186,32 @@ try {
     await page.locator('.wg-scene').evaluate((e) => getComputedStyle(e).borderTopWidth),
     '0px',
   );
-  checks.push('three-workshop-variants-without-links');
+  await page.locator('.wg-iso canvas').waitFor();
+  assert.equal(await page.locator('.wg-iso').getAttribute('data-surface'), 'contour');
+  checks.push('three-isometric-materials-on-one-scene');
+  const collector = page.getByRole('button', { name: 'Открыть участок Сбор', exact: true });
+  await collector.hover();
+  await page.waitForFunction(() =>
+    document.querySelector('#wg-route-hint').textContent.includes('Telegram, TikTok'),
+  );
+  assert.match(await page.locator('#wg-route-hint').innerText(), /Исходящие: Комментарии/);
+  await page.mouse.move(0, 0);
+  assert.equal(await page.locator('#wg-route-hint').innerText(), '');
+  await collector.focus();
+  assert.equal(await collector.getAttribute('aria-describedby'), 'wg-route-hint');
+  checks.push('route-neighborhood-on-hover-and-keyboard-focus');
   const telegram = page.getByRole('button', { name: 'Открыть участок Telegram', exact: true });
   await telegram.click();
   await page.getByRole('region', { name: 'Процесс Telegram' }).waitFor();
+  const panelIconColors = await page.locator('.wg-panel-icon').evaluate((e) => {
+    const style = getComputedStyle(e);
+    return [style.color, style.backgroundColor, style.borderTopColor];
+  });
+  for (const color of panelIconColors) {
+    const channels = color.match(/\d+/g).slice(0, 3).map(Number);
+    assert.equal(Math.max(...channels) - Math.min(...channels), 0);
+  }
+  checks.push('monochrome-workshop-source-icon');
   assert.equal(
     await page.locator('.wg-process-panel').evaluate((e) => getComputedStyle(e).position),
     'fixed',
@@ -204,6 +230,21 @@ try {
   await page.keyboard.press('Escape');
   await page.locator('.wg-process-panel').waitFor({ state: 'hidden' });
   checks.push('source-process-panel-and-export');
+  await page.evaluate(() => {
+    window.__workshopRoutes = [];
+    window.__workshopArrivals = [];
+    const status = document.querySelector('.wg-flow-status');
+    new MutationObserver(() => {
+      const label = status.innerText.replace(/\s+/g, ' ').trim();
+      if (label && window.__workshopRoutes.at(-1) !== label) window.__workshopRoutes.push(label);
+    }).observe(status, { childList: true, subtree: true, characterData: true });
+    const receipt = document.querySelector('.wg-arrival-status');
+    new MutationObserver(() => {
+      const label = receipt.textContent.trim();
+      if (label && window.__workshopArrivals.at(-1) !== label)
+        window.__workshopArrivals.push(label);
+    }).observe(receipt, { childList: true, subtree: true, characterData: true });
+  });
   await page.getByRole('button', { name: 'Запустить весь цикл', exact: true }).click();
   await page.locator('.wg-process-panel').waitFor();
   const stop = page
@@ -214,9 +255,31 @@ try {
   assert.equal(await stop.evaluate((e) => e === document.activeElement), true);
   await page.getByRole('button', { name: 'Скачать Markdown', exact: true }).waitFor();
   assert.equal(await page.locator('.wg-events>div').count(), 7);
+  assert.deepEqual(await page.evaluate(() => window.__workshopRoutes), [
+    'Telegram Сбор telegram.md',
+    'TikTok Сбор tiktok.md',
+    'Сбор Комментарии inbox.md',
+    'Комментарии Темы comments.md',
+    'Темы Материалы ideas.md',
+    'Материалы Аналитика materials.md',
+  ]);
+  assert.equal(await page.locator('.wg-flow-status').innerText(), '');
+  checks.push('six-directed-file-handoffs');
+  assert.deepEqual(await page.evaluate(() => window.__workshopArrivals), [
+    'Сбор: получен telegram.md',
+    'Сбор: получен tiktok.md',
+    'Комментарии: получен inbox.md',
+    'Темы: получен comments.md',
+    'Материалы: получен ideas.md',
+    'Аналитика: получен materials.md',
+  ]);
+  checks.push('delivery-confirmation-at-each-input-port');
   await page.keyboard.press('Escape');
   checks.push('full-cycle-without-focus-theft');
   await page.getByRole('button', { name: 'Запустить весь цикл', exact: true }).click();
+  await page.waitForFunction(() =>
+    document.querySelector('.wg-flow-status').textContent.includes('telegram.md'),
+  );
   await page
     .locator('.wg-process-panel')
     .getByRole('button', { name: 'Остановить цикл', exact: true })
@@ -226,6 +289,11 @@ try {
     1,
   );
   assert.equal(await page.locator('.wg-active').count(), 0);
+  assert.equal(await page.locator('.wg-flow-status').innerText(), '');
+  await page.waitForTimeout(950);
+  assert.equal(await page.locator('.wg-active').count(), 0);
+  assert.equal(await page.locator('.wg-flow-status').innerText(), '');
+  assert.equal(await page.locator('.wg-arrival-status').innerText(), '');
   await page.getByRole('button', { name: 'Закрыть процесс', exact: true }).click();
   checks.push('cycle-cancellation');
   const library = page.locator('#library');
@@ -233,7 +301,10 @@ try {
   await library.getByRole('button', { name: 'Коллекции', exact: true }).click();
   assert.equal(await library.locator('.lib-collection-tile').count(), 4);
   await library.getByRole('button', { name: 'Папки', exact: true }).click();
+  await library.locator('.lib-collection-tile').first().waitFor({ state: 'detached' });
   await library.getByRole('button', { name: /Открыть папку «Карьера»/ }).click();
+  await library.locator('.lib-open-folder').waitFor();
+  await library.locator('.lib-folder-grid').waitFor({ state: 'detached' });
   assert.equal(await library.locator('.lib-file-row').count(), 3);
   await library.locator('.lib-file-row').first().click();
   await page.getByRole('dialog').waitFor();
@@ -243,6 +314,7 @@ try {
   );
   assert.ok(fs.readFileSync(libraryMd, 'utf8').split('\n').length > 5);
   await page.keyboard.press('Escape');
+  await page.getByRole('dialog').waitFor({ state: 'detached' });
   await library.getByRole('button', { name: 'Все папки библиотеки', exact: true }).click();
   checks.push('folder-collection-navigation-and-markdown');
   await library.getByRole('button', { name: 'Новая папка', exact: true }).click();
@@ -317,6 +389,13 @@ try {
     );
     assert.equal(overflow, false, `Overflow at ${width}`);
     layouts.push(width);
+    if (width === 390) {
+      const mobileIconColors = await page
+        .locator('.wg-mobile-nodes > button > svg:first-child')
+        .evaluateAll((elements) => elements.map((e) => getComputedStyle(e).color));
+      assert.equal(mobileIconColors.length, 7);
+      assert.ok(mobileIconColors.every((color) => color === 'rgb(200, 200, 200)'));
+    }
     for (const id of ['components', 'workshop', 'library', 'analytics', 'typography']) {
       await page.locator('#' + id).scrollIntoViewIfNeeded();
       if (width === 1440 || width === 390) {

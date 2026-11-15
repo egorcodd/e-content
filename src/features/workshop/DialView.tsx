@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react';
-import { AnimatedNumber, StatusBadge, StatusIcon, type StatusKind } from '../shared';
+import { AnimatedNumber, StatusBadge, StatusIcon, type StatusKind } from '../../shared/ui';
 import { stations, type ViewProps } from './stations';
 
 const C = 320;

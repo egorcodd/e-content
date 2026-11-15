@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const origin = process.env.PREVIEW_URL || 'http://127.0.0.1:5186';
+const origin = (process.env.PREVIEW_URL || 'http://127.0.0.1:5186') + '/design-system';
 const output = path.join(process.cwd(), '.qa', 'v2');
 fs.mkdirSync(output, { recursive: true });
 // CHROME_PATH lets the check run on machines without Microsoft Edge (e.g. Linux).
@@ -225,7 +225,7 @@ try {
   assert.equal(await page.locator('.wg-steps .is-done').count(), 4);
   await download(
     () => page.getByRole('button', { name: 'Скачать Markdown', exact: true }).click(),
-    'e-content-example.md',
+    'e-content-report.md',
   );
   await page.keyboard.press('Escape');
   await page.locator('.wg-process-panel').waitFor({ state: 'hidden' });
@@ -408,13 +408,13 @@ try {
   await page.reload();
   await page.evaluate(() => document.fonts.ready);
   await page.waitForFunction(
-    () => document.querySelector('#library').getBoundingClientRect().top < 260,
+    () => document.querySelector('#library')?.getBoundingClientRect().top < 260,
   );
   assert.ok(await page.evaluate(() => scrollY > 0));
   await page.goto(origin + '/?view=analytics');
   await page.evaluate(() => document.fonts.ready);
   await page.waitForFunction(
-    () => document.querySelector('#analytics').getBoundingClientRect().top < 260,
+    () => document.querySelector('#analytics')?.getBoundingClientRect().top < 260,
   );
   assert.equal(new URL(page.url()).hash, '#analytics');
   checks.push('initial-section-links-and-legacy-url-migration');

@@ -8,8 +8,8 @@ import {
   type ReactNode,
 } from 'react';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
-import { Select } from './Select';
-import { Segment } from './shared';
+import { Select } from '../shared/Select';
+import { Segment } from '../shared/ui';
 import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
@@ -217,7 +217,7 @@ function dateLabel(value: string) {
   }).format(new Date(value));
 }
 function markdown(file: LibraryFile) {
-  return `# ${file.title}\n\n> Демонстрационный материал дизайн-системы e-content.\n\nТема: ${file.topic}\nФормат: ${file.format}\nОснования: ${file.messages} сообщений, ${file.authors} авторов\n\n${file.text}\n\n## Вопросы аудитории\n\n${file.questions.map((question) => `- ${question}`).join('\n')}\n`;
+  return `# ${file.title}\n\nТема: ${file.topic}\nФормат: ${file.format}\nОснования: ${file.messages} сообщений, ${file.authors} авторов\n\n${file.text}\n\n## Вопросы аудитории\n\n${file.questions.map((question) => `- ${question}`).join('\n')}\n`;
 }
 function download(file: LibraryFile) {
   const url = URL.createObjectURL(
@@ -591,7 +591,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
         folder.id === current.id ? { ...folder, files: [...folder.files, file] } : folder,
       ),
     );
-    notify('Демоматериал добавлен в папку');
+    notify('Материал добавлен в папку');
   };
   return (
     <section id="library" className="lib-section">
@@ -885,7 +885,7 @@ export function LibraryGallery({ notify }: { notify: (text: string) => void }) {
                         onClick={addSample}
                       >
                         <PlusIcon size={18} />
-                        Добавить демоматериал
+                        Добавить материал
                       </button>
                     )}
                     <button

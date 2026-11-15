@@ -1,0 +1,116 @@
+.home-page {
+  height: 100%;
+  min-height: 0;
+}
+.wg-workspace {
+  height: 100%;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.wg-workspace-toolbar {
+  min-height: 50px;
+  flex-shrink: 0;
+  padding-bottom: 8px;
+  gap: 18px;
+}
+.wg-workspace-title {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.wg-workspace-title h1 {
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.8px;
+}
+.wg-workspace-title > span {
+  border: 1px solid #303030;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 12px;
+  color: #999;
+}
+.wg-workspace .wg-scene.wg-scene-hub {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  margin-top: 0;
+  margin-inline: calc(-1 * var(--page-gutter));
+}
+.wg-workspace .wg-flow-status {
+  position: absolute;
+  z-index: 2;
+  top: 62px;
+  left: 0;
+  margin: 0;
+  min-height: 0;
+  pointer-events: none;
+}
+.wg-workspace .wg-process-panel {
+  top: 16px;
+  bottom: auto;
+  max-height: calc(100dvh - 32px);
+  right: 16px;
+  z-index: 60;
+}
+.wg-workspace .wg-panel-top {
+  margin-bottom: 14px;
+}
+.wg-workspace .wg-panel-title {
+  margin-bottom: 16px;
+}
+.wg-workspace .wg-steps {
+  margin: 20px 0 14px;
+}
+.wg-workspace .wg-steps > li {
+  min-height: 60px;
+}
+@media (max-width: 700px) {
+  .wg-workspace-toolbar {
+    gap: 12px;
+  }
+  .wg-workspace-title {
+    padding-left: 64px;
+    min-height: 42px;
+  }
+  .wg-workspace-title h1 {
+    font-size: 24px;
+  }
+  .wg-workspace-title > span {
+    display: none;
+  }
+  .wg-workspace-toolbar > .ec-actions {
+    margin-left: auto;
+  }
+  .wg-workspace-toolbar .ec-button {
+    min-height: 42px;
+    padding-inline: 14px;
+    font-size: 13px;
+  }
+  .wg-workspace .wg-flow-status {
+    top: 108px;
+    font-size: 12px;
+  }
+  .wg-workspace .wg-mobile-nodes {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    overflow-x: auto;
+    padding: 8px 0 0;
+  }
+  .wg-workspace .wg-mobile-nodes > button {
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding: 8px 11px;
+    font-size: 12px;
+  }
+  .wg-workspace .wg-process-panel {
+    top: 10px;
+    bottom: auto;
+    max-height: calc(100dvh - 20px);
+    right: 8px;
+    width: min(384px, calc(100vw - 16px));
+  }
+}

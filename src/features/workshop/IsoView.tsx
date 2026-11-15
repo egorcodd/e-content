@@ -11,7 +11,7 @@ import { useInView, useReducedMotion } from 'motion/react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Edges, RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
-import { StatusIcon, type StatusKind } from '../shared';
+import { StatusIcon, type StatusKind } from '../../shared/ui';
 import { stations, hubStations, type Station, type ViewProps } from './stations';
 import { Connections } from './Connections';
 import {
@@ -26,6 +26,7 @@ const P = 1.9; // platform size
 const SPREAD = 1.22;
 const CLAY = '#d2d2d2';
 const DARK = '#3a3a3a';
+const FRAGMENT_COLORS = ['#7d91a6', '#a08794'] as const;
 export type SurfaceStyle = 'contour' | 'mesh' | 'smoke';
 const SurfaceContext = createContext<SurfaceStyle>('smoke');
 const stateColor: Record<StatusKind, string> = {
@@ -55,13 +56,13 @@ function useStationTime(live: boolean, idleRate = 0.12) {
 }
 
 /** Every station shares one surface treatment; no separate logo brightness or stroke. */
-function Surface({ color = CLAY }: { color?: string }) {
+function Surface({ color = CLAY, tint }: { color?: string; tint?: string }) {
   const style = useContext(SurfaceContext);
   const dark = color === DARK || color === '#141414';
   return (
     <>
       <meshBasicMaterial
-        color={dark ? '#555555' : '#b8b8b8'}
+        color={tint ?? (dark ? '#555555' : '#b8b8b8')}
         transparent
         opacity={style === 'mesh' ? 0.07 : style === 'smoke' ? 0.095 : 0.035}
         wireframe={style === 'mesh'}
@@ -71,7 +72,7 @@ function Surface({ color = CLAY }: { color?: string }) {
       />
       <Edges
         threshold={24}
-        color={dark ? '#777777' : '#c4c4c4'}
+        color={tint ?? (dark ? '#777777' : '#c4c4c4')}
         lineWidth={style === 'mesh' ? 0.6 : 0.7}
         transparent
         opacity={style === 'smoke' ? 0.18 : style === 'mesh' ? 0.32 : dark ? 0.3 : 0.48}
@@ -219,17 +220,17 @@ function Hopper({ live }: { live: boolean }) {
           <mesh ref={(m) => void (sheets.current[i] = m)}>
             <boxGeometry args={[0.18, 0.22, 0.025]} />
             <meshBasicMaterial
-              color="#d7d7d7"
+              color={FRAGMENT_COLORS[i % 2]}
               transparent
-              opacity={0.34}
+              opacity={0.3}
               depthWrite={false}
               toneMapped={false}
             />
             <Edges
               threshold={25}
-              color="#d7d7d7"
+              color={FRAGMENT_COLORS[i % 2]}
               transparent
-              opacity={0.4}
+              opacity={0.42}
               lineWidth={0.7}
               depthWrite={false}
               toneMapped={false}
@@ -238,9 +239,9 @@ function Hopper({ live }: { live: boolean }) {
           <mesh position-y={0.22}>
             <boxGeometry args={[0.008, 0.25, 0.008]} />
             <meshBasicMaterial
-              color="#bcbcbc"
+              color={FRAGMENT_COLORS[i % 2]}
               transparent
-              opacity={0.14}
+              opacity={0.1}
               depthWrite={false}
               toneMapped={false}
             />
@@ -385,7 +386,7 @@ function Cluster({ live }: { live: boolean }) {
             ]}
           >
             <icosahedronGeometry args={[0.1 + (i % 2) * 0.04, 0]} />
-            <Surface />
+            <Surface tint={i === 0 ? '#7097bc' : i === 2 ? '#b77a94' : undefined} />
           </mesh>
         ))}
       </group>
@@ -730,6 +731,17 @@ function LabelSync({
   return null;
 }
 
+function SceneReady({ onReady }: { onReady?: () => void }) {
+  const frames = useRef(0);
+  const reported = useRef(false);
+  useFrame(() => {
+    if (!onReady || reported.current || ++frames.current < 3) return;
+    reported.current = true;
+    onReady();
+  });
+  return null;
+}
+
 export default function IsoView({
   selected,
   active,
@@ -743,6 +755,7 @@ export default function IsoView({
   transfers = [],
   arrivals = [],
   receivedCount = 0,
+  onReady,
 }: ViewProps & {
   surface?: SurfaceStyle;
   transfer?: WorkshopTransfer | null;
@@ -752,6 +765,7 @@ export default function IsoView({
   transfers?: WorkshopTransfer[];
   arrivals?: WorkshopArrival[];
   receivedCount?: number;
+  onReady?: () => void;
 }) {
   const items = layout === 'hub' ? hubStations : stations;
   const edges = layout === 'hub' ? hubConnections : connections;
@@ -813,6 +827,7 @@ export default function IsoView({
             />
           ))}
           <LabelSync labels={labels} items={items} />
+          <SceneReady onReady={onReady} />
         </SurfaceContext.Provider>
       </Canvas>
       <div className="wg-iso-labels">

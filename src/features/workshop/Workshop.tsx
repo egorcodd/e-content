@@ -17,19 +17,15 @@ import {
   StatusBadge,
   StatusIcon,
   type StatusKind,
-} from './shared';
-import { stations, hubStations, orchestrator, type ViewProps } from './workshop/stations';
-import { ConsoleView } from './workshop/ConsoleView';
-import type { SurfaceStyle } from './workshop/IsoView';
-import {
-  connections,
-  waitForStage,
-  type WorkshopTransfer,
-  type WorkshopArrival,
-} from './workshop/workflow';
-import './workshop-gallery.css';
+} from '../../shared/ui';
+import { stations, hubStations, orchestrator, type ViewProps } from './stations';
+import { ConsoleView } from './ConsoleView';
+import type { SurfaceStyle } from './IsoView';
+import { connections, waitForStage, type WorkshopTransfer, type WorkshopArrival } from './workflow';
+import './workshop.css';
+import { preloadWorkshopScene } from './scene-loader';
 
-const IsoView = lazy(() => import('./workshop/IsoView'));
+const IsoView = lazy(preloadWorkshopScene);
 let webgl: boolean | undefined;
 function hasWebGL() {
   if (webgl === undefined) {
@@ -43,12 +39,15 @@ function hasWebGL() {
 }
 /** Anything thrown while building the 3D scene drops the user onto the console view. */
 class SceneBoundary extends Component<
-  { fallback: ReactNode; children: ReactNode },
+  { fallback: ReactNode; children: ReactNode; onFailure?: () => void },
   { failed: boolean }
 > {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
+  }
+  componentDidCatch() {
+    this.props.onFailure?.();
   }
   render() {
     return this.state.failed ? this.props.fallback : this.props.children;
@@ -73,8 +72,17 @@ const variants = [
   { id: 'smoke', label: 'Дымка' },
 ];
 
-export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
-  const [version, setVersion] = useState<'chain' | 'hub'>('chain');
+export function Workshop({
+  notify,
+  presentation = 'gallery',
+  onReady,
+}: {
+  notify: (s: string) => void;
+  presentation?: 'gallery' | 'workspace';
+  onReady?: () => void;
+}) {
+  const workspace = presentation === 'workspace';
+  const [version, setVersion] = useState<'chain' | 'hub'>(workspace ? 'hub' : 'chain');
   const items = version === 'hub' ? hubStations : stations;
   const [batch, setBatch] = useState<WorkshopTransfer[]>([]);
   const [batchArrivals, setBatchArrivals] = useState<WorkshopArrival[]>([]);
@@ -98,6 +106,9 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
   const reduced = useReducedMotion();
   const station = items.find((s) => s.id === selected);
   useEffect(() => () => control.current?.abort(), []);
+  useEffect(() => {
+    if (!hasWebGL()) onReady?.();
+  }, [onReady]);
   // a late frame (heavy 3D scene) must not pull focus out of a control the user already chose
   const focusPanel = () =>
     requestAnimationFrame(() => {
@@ -226,11 +237,11 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
         }
         setStep(orchestrator.steps.length);
         setDone((old) => [...old, 'orchestrator']);
-        setEvents((old) => ['Оркестратор / workspace.md', ...old].slice(0, 8));
+        setEvents((old) => ['Ядро / workspace.md', ...old].slice(0, 8));
       }
       if (!abort.signal.aborted) {
         setFinished(true);
-        notify(all ? 'Демонстрация полного цикла завершена' : 'Демонстрация участка завершена');
+        notify(all ? 'Полный цикл завершён' : 'Обработка участка завершена');
       }
     } finally {
       if (control.current === abort) {
@@ -282,38 +293,46 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
         ? 'pause'
         : 'wait';
   return (
-    <section id="workshop" className="ec-section wg-section">
-      <SectionHeading number="02" title="Цех">
-        <div className="wg-mode-switch">
+    <section id="workshop" className={`wg-section ${workspace ? 'wg-workspace' : 'ec-section'}`}>
+      {!workspace && (
+        <SectionHeading number="02" title="Цех">
+          <div className="wg-mode-switch">
+            <Segment
+              label="Версия цеха"
+              value={version}
+              onChange={(id) => {
+                stop();
+                setSelected(null);
+                setDone([]);
+                setEvents([]);
+                setFinished(false);
+                setHalted(null);
+                setStep(-1);
+                setReceivedCount(0);
+                setVersion(id as 'chain' | 'hub');
+              }}
+              values={[
+                { id: 'chain', label: 'V1 · Цепочка' },
+                { id: 'hub', label: 'V2 · Ядро' },
+              ]}
+            />
+          </div>
+        </SectionHeading>
+      )}
+      <div className={`ec-section-controls ${workspace ? 'wg-workspace-toolbar' : ''}`}>
+        {workspace ? (
+          <div className="wg-workspace-title">
+            <h1>Цех агентов</h1>
+            <span>8 участков</span>
+          </div>
+        ) : (
           <Segment
-            label="Версия цеха"
-            value={version}
-            onChange={(id) => {
-              stop();
-              setSelected(null);
-              setDone([]);
-              setEvents([]);
-              setFinished(false);
-              setHalted(null);
-              setStep(-1);
-              setReceivedCount(0);
-              setVersion(id as 'chain' | 'hub');
-            }}
-            values={[
-              { id: 'chain', label: 'V1 · Цепочка' },
-              { id: 'hub', label: 'V2 · Оркестратор' },
-            ]}
+            label="Материал изометрии"
+            value={surface}
+            onChange={(id) => setSurface(id as SurfaceStyle)}
+            values={variants}
           />
-          <span className="ec-demo">Демо</span>
-        </div>
-      </SectionHeading>
-      <div className="ec-section-controls">
-        <Segment
-          label="Материал изометрии"
-          value={surface}
-          onChange={(id) => setSurface(id as SurfaceStyle)}
-          values={variants}
-        />
+        )}
         <div className="ec-actions">
           <button className="ec-icon" onClick={close} aria-label="Вернуть общий вид">
             <ArrowCounterClockwiseIcon size={18} />
@@ -337,7 +356,7 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
                 : `${batch.length} результатов`}
             </span>
             <ArrowRightIcon size={14} />
-            <span>Оркестратор</span>
+            <span>Ядро</span>
           </>
         ) : (
           transfer && (
@@ -361,7 +380,7 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
           `${items.find((s) => s.id === arrival.to)?.name}: получен ${items.find((s) => s.id === arrival.from)?.steps.at(-1)}`}
       </span>
       <span className="sr-only wg-hub-receipt" role="status" aria-live="polite">
-        {batchArrivals.length > 0 && `Оркестратор: получено результатов ${batchArrivals.length}`}
+        {batchArrivals.length > 0 && `Ядро: получено результатов ${batchArrivals.length}`}
       </span>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
@@ -373,8 +392,8 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
           transition={{ duration: reduced ? 0 : 0.45, ease: [0.16, 1, 0.3, 1] }}
         >
           {hasWebGL() ? (
-            <SceneBoundary fallback={fallback}>
-              <Suspense fallback={<SceneLoading />}>
+            <SceneBoundary fallback={fallback} onFailure={onReady}>
+              <Suspense fallback={workspace ? null : <SceneLoading />}>
                 <IsoView
                   {...view}
                   surface={surface}
@@ -385,6 +404,7 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
                   transfers={batch}
                   arrivals={batchArrivals}
                   receivedCount={receivedCount}
+                  onReady={onReady}
                 />
               </Suspense>
             </SceneBoundary>
@@ -417,7 +437,7 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
             transition={reduced ? { duration: 0 } : { type: 'spring', bounce: 0.12, duration: 0.5 }}
           >
             <div className="wg-panel-top">
-              <span>Процесс / Демо</span>
+              <span>Процесс</span>
               <button className="ec-icon" aria-label="Закрыть процесс" onClick={close}>
                 <XIcon size={20} />
               </button>
@@ -510,9 +530,8 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
                     exit={{ opacity: 0 }}
                     onClick={() =>
                       downloadText(
-                        'e-content-example.md',
-                        '# e-content\n\nДемонстрационный цикл дизайн-системы.\n\n' +
-                          events.map((e) => '- ' + e).join('\n'),
+                        'e-content-report.md',
+                        '# e-content\n\n' + events.map((e) => '- ' + e).join('\n'),
                       )
                     }
                   >
@@ -542,10 +561,6 @@ export function WorkshopGallery({ notify }: { notify: (s: string) => void }) {
                 </AnimatePresence>
               </div>
             )}
-            <div className="wg-panel-bottom">
-              <span className="wg-demo-dot" />
-              Демонстрационный процесс
-            </div>
           </motion.aside>
         )}
       </AnimatePresence>

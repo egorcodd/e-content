@@ -20,9 +20,9 @@ import {
 } from '@phosphor-icons/react';
 import { AnalyticsGallery } from './lab/AnalyticsGallery';
 import { LibraryGallery } from './lab/LibraryGallery';
-import { WorkshopGallery } from './lab/WorkshopGallery';
+import { Workshop } from './features/workshop/Workshop';
 import { ScenarioGallery } from './lab/ScenarioGallery';
-import { Select } from './lab/Select';
+import { Select } from './shared/Select';
 import {
   ArrowSwap,
   downloadText,
@@ -35,7 +35,8 @@ import {
   statusLabels,
   ThinkingGlyph,
   type StatusKind,
-} from './lab/shared';
+} from './shared/ui';
+import { useSpotlight } from './shared/useSpotlight';
 import './lab/lab.css';
 
 const sections = [
@@ -142,21 +143,7 @@ export default function LabApp() {
     window.addEventListener('keydown', shortcut);
     return () => window.removeEventListener('keydown', shortcut);
   }, []);
-  // Spotlight hovers read the cursor position from --mx/--my on every lit ancestor.
-  useEffect(() => {
-    const lit = '.ec-button, .ec-round, .ec-glow';
-    const move = (e: PointerEvent) => {
-      let el = (e.target as Element | null)?.closest?.<HTMLElement>(lit) ?? null;
-      while (el) {
-        const rect = el.getBoundingClientRect();
-        el.style.setProperty('--mx', `${e.clientX - rect.left}px`);
-        el.style.setProperty('--my', `${e.clientY - rect.top}px`);
-        el = el.parentElement?.closest<HTMLElement>(lit) ?? null;
-      }
-    };
-    window.addEventListener('pointermove', move, { passive: true });
-    return () => window.removeEventListener('pointermove', move);
-  }, []);
+  useSpotlight();
   useEffect(() => {
     const spy = new IntersectionObserver(
       (entries) => {
@@ -283,7 +270,7 @@ export default function LabApp() {
       </header>
       <main id="main" className="ec-main">
         <ComponentGallery notify={notify} />
-        <WorkshopGallery notify={notify} />
+        <Workshop notify={notify} />
         <LibraryGallery notify={notify} />
         <AnalyticsGallery />
         <ScenarioGallery />
@@ -577,7 +564,7 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
           <span className="ec-section-number">01</span>
           <h1>Элементы интерфейса</h1>
         </div>
-        <span className="ec-demo">Варианты</span>
+        <span className="ec-tag">Варианты</span>
       </div>
       <div className="ec-button-variants">
         <div>
@@ -693,10 +680,7 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
             <button
               className="ec-button ec-ghost"
               onClick={() => {
-                downloadText(
-                  'e-content-note.md',
-                  '# Новая заметка\n\nДемонстрационный материал e-content.',
-                );
+                downloadText('e-content-note.md', '# Новая заметка\n\n');
                 notify('Markdown скачан');
               }}
             >
@@ -908,10 +892,7 @@ function ComponentGallery({ notify }: { notify: (text: string) => void }) {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!title.trim()) return;
-                downloadText(
-                  'e-content-material.md',
-                  `# ${title.trim()}\n\nДемонстрационный материал дизайн-системы e-content.\n`,
-                );
+                downloadText('e-content-material.md', `# ${title.trim()}\n\n## Содержание\n\n`);
                 setModal(false);
                 setTitle('');
                 notify('Markdown скачан');

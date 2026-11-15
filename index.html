@@ -6,13 +6,63 @@
     <meta name="theme-color" content="#090909" />
     <meta
       name="description"
-      content="e-content — компоненты, визуальные варианты цеха, папки и графики."
+      content="e-content — рабочее пространство для аналитики контента, материалов и агентов."
     />
     <link rel="icon" type="image/svg+xml" href="/mark.svg" />
-    <title>e-content / дизайн-система</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #090909;
+        color: #ececec;
+      }
+    </style>
+    <link rel="stylesheet" href="/src/app/loading/loading.css" />
+    <title>Главная · e-content</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="app-loader" role="status" aria-label="Загрузка e-content">
+        <div class="app-loader-content">
+          <div class="app-loader-emblem" aria-hidden="true">
+            <div class="app-loader-core">
+              <i></i><i></i><i></i><i></i><i></i><b></b><b></b><b></b>
+            </div>
+            <div class="app-loader-orbit"><i></i></div>
+            <div class="app-loader-orbit"><i></i></div>
+            <div class="app-loader-orbit"><i></i></div>
+          </div>
+          <strong class="app-loader-name">e-content</strong
+          ><span class="app-loader-caption" data-initial-page-title></span>
+          <div class="app-loader-rail" aria-hidden="true"><i></i></div>
+        </div>
+      </div>
+    </div>
+    <script>
+      (() => {
+        const url = new URL(window.location.href);
+        const path = url.pathname.replace(/\/+$/, '') || '/';
+        const legacy = [
+          'components',
+          'workshop',
+          'library',
+          'analytics',
+          'scenarios',
+          'typography',
+        ];
+        const isGallery =
+          path === '/design-system' ||
+          (path === '/' && (url.searchParams.has('view') || legacy.includes(url.hash.slice(1))));
+        const title = isGallery
+          ? 'Компоненты'
+          : path === '/analytics'
+            ? 'Аналитика'
+            : path === '/'
+              ? 'Цех агентов'
+              : '';
+        document.querySelector('[data-initial-page-title]').textContent = title;
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

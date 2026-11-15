@@ -18,8 +18,8 @@ import {
   StatusBadge,
   StatusIcon,
   type StatusKind,
-} from './shared';
-import { waitForStage } from './workshop/workflow';
+} from '../shared/ui';
+import { waitForStage } from '../features/workshop/workflow';
 import './scenario-gallery.css';
 
 type Scenario = 'empty' | 'success' | 'failure';
@@ -145,7 +145,7 @@ export function ScenarioGallery() {
   function exportResult() {
     downloadText(
       'scenario-report.md',
-      `# Демонстрационный отчёт e-content\n\nРезультат: ${partial ? 'частичный' : 'полный'}.\n\n- Telegram: 4 канала, 24 комментария\n- TikTok: ${partial ? 'недоступен, данные отсутствуют' : '12 роликов'}\n- Идеи: ${partial ? 5 : 8}\n\nДанные созданы для просмотра состояний дизайн-системы.\n`,
+      `# Отчёт e-content\n\nРезультат: ${partial ? 'частичный' : 'полный'}.\n\n- Telegram: 4 канала, 24 комментария\n- TikTok: ${partial ? 'недоступен, данные отсутствуют' : '12 роликов'}\n- Идеи: ${partial ? 5 : 8}\n`,
     );
   }
   const stages = [
@@ -158,16 +158,14 @@ export function ScenarioGallery() {
   ];
   const activeStage = ['collect', 'analyze', 'save'].indexOf(state.phase);
   const descriptions: Record<Scenario, string> = {
-    empty: 'Подключите демоисточники, чтобы собрать первые материалы.',
+    empty: 'Подключите источники, чтобы собрать первые материалы.',
     success: 'Оба источника передают данные. Цех собирает идеи и сохраняет отчёт.',
     failure: 'TikTok не отвечает. Цех сохраняет результат Telegram и предлагает повторить сбор.',
   };
 
   return (
     <section id="scenarios" className="ec-section">
-      <SectionHeading number="05" title="Состояния и сценарии">
-        <span className="sg-demo-label">Интерактивное демо</span>
-      </SectionHeading>
+      <SectionHeading number="05" title="Состояния и сценарии" />
       <div className="sg-switcher">
         <Segment label="Сценарий работы" values={scenarios} value={scenario} onChange={select} />
         <button className="ec-button ec-ghost" onClick={() => select(scenario)}>
@@ -185,7 +183,7 @@ export function ScenarioGallery() {
           className="sg-workspace"
           data-phase={state.phase}
           data-result={state.result}
-          aria-label="Демонстрация сценария"
+          aria-label="Ход сценария"
         >
           <div className="sg-topline">
             <div>
@@ -246,7 +244,7 @@ export function ScenarioGallery() {
                     onClick={() => setState(initial('success'))}
                   >
                     <PlugsConnectedIcon size={18} />
-                    Подключить демоисточники
+                    Подключить источники
                   </button>
                 ) : busy ? (
                   <button className="ec-button" onClick={stop}>
@@ -264,13 +262,11 @@ export function ScenarioGallery() {
                     {state.phase === 'done' ? 'Проиграть ещё раз' : 'Запустить цикл'}
                   </button>
                 )}
-                <span>
-                  {busy
-                    ? state.retry
-                      ? 'Telegram сохранён, обновляем TikTok'
-                      : 'Демонстрация обработки'
-                    : 'Без запросов к реальным сервисам'}
-                </span>
+                {busy && (
+                  <span>
+                    {state.retry ? 'Telegram сохранён, обновляем TikTok' : 'Обработка материалов'}
+                  </span>
+                )}
               </div>
             </div>
             <div className="sg-result">
@@ -348,7 +344,7 @@ export function ScenarioGallery() {
                       ? 'Запуск остановлен. Незавершённые этапы не сохраняются.'
                       : state.phase === 'empty'
                         ? 'Источники не подключены. Прочерк означает, что данных пока нет.'
-                        : 'Демоисточники подключены. Можно запустить сбор.'}
+                        : 'Источники подключены. Можно запустить сбор.'}
             </span>
           </div>
         </motion.div>

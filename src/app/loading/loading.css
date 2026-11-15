@@ -1,0 +1,195 @@
+.app-loader-cover {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+.app-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: grid;
+  place-items: center;
+  background: #090909;
+  color: #ececec;
+  font-family: var(--font-sans, 'Segoe UI', sans-serif);
+}
+.app-loader-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px;
+}
+.app-loader-emblem {
+  width: 180px;
+  height: 160px;
+  position: relative;
+  perspective: 420px;
+  transform-style: preserve-3d;
+  margin-bottom: 16px;
+}
+.app-loader-core {
+  position: absolute;
+  width: 104px;
+  height: 104px;
+  left: 38px;
+  top: 28px;
+  border: 1px solid #ffffff35;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 24%, #ffffff0b, #ffffff02 65%);
+  transform-style: preserve-3d;
+  animation: loader-core 14s linear infinite;
+}
+.app-loader-core > i {
+  position: absolute;
+  inset: 0;
+  border: 1px solid #ffffff30;
+  border-radius: 50%;
+  transform: rotateY(var(--angle));
+}
+.app-loader-core > i:nth-child(1) {
+  --angle: 0deg;
+}
+.app-loader-core > i:nth-child(2) {
+  --angle: 36deg;
+}
+.app-loader-core > i:nth-child(3) {
+  --angle: 72deg;
+}
+.app-loader-core > i:nth-child(4) {
+  --angle: 108deg;
+}
+.app-loader-core > i:nth-child(5) {
+  --angle: 144deg;
+}
+.app-loader-core > b {
+  position: absolute;
+  width: var(--diameter);
+  height: var(--diameter);
+  left: 50%;
+  top: calc(50% + var(--offset));
+  border-radius: 50%;
+  border: 1px solid #ffffff22;
+  transform: translate(-50%, -50%) rotateX(90deg);
+}
+.app-loader-core > b:nth-of-type(1) {
+  --diameter: 88px;
+  --offset: -26px;
+}
+.app-loader-core > b:nth-of-type(2) {
+  --diameter: 104px;
+  --offset: 0px;
+}
+.app-loader-core > b:nth-of-type(3) {
+  --diameter: 88px;
+  --offset: 26px;
+}
+.app-loader-orbit {
+  position: absolute;
+  width: 158px;
+  height: 158px;
+  left: 11px;
+  top: 1px;
+  border-radius: 50%;
+  border: 1px solid #ffffff24;
+  transform: rotateZ(var(--tilt)) rotateX(66deg);
+  transform-style: preserve-3d;
+}
+.app-loader-orbit:nth-of-type(2) {
+  --tilt: -28deg;
+  --tint: #8199ad;
+  --duration: 3.6s;
+}
+.app-loader-orbit:nth-of-type(3) {
+  --tilt: 42deg;
+  --tint: #a18c97;
+  --duration: 4.8s;
+}
+.app-loader-orbit:nth-of-type(4) {
+  --tilt: 108deg;
+  --tint: #b5b5b5;
+  --duration: 6s;
+}
+.app-loader-orbit > i {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  transform-style: preserve-3d;
+  animation: loader-orbit var(--duration) linear infinite;
+}
+.app-loader-orbit > i::after {
+  content: '';
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  top: -2px;
+  left: calc(50% - 2px);
+  border-radius: 50%;
+  background: var(--tint);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--tint) 24%, transparent);
+}
+.app-loader-name {
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 550;
+  letter-spacing: -0.9px;
+}
+.app-loader-caption {
+  margin-top: 8px;
+  color: #888;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.app-loader-rail {
+  margin-top: 26px;
+  width: 180px;
+  height: 2px;
+  border-radius: 2px;
+  background: #262626;
+  overflow: hidden;
+}
+.app-loader-rail > i {
+  display: block;
+  width: 45%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, #b8b8b8, transparent);
+  animation: loader-rail 1.6s ease-in-out infinite;
+}
+.app-loader-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+@keyframes loader-core {
+  from {
+    transform: rotateZ(-18deg) rotateX(-12deg) rotateY(0deg);
+  }
+  to {
+    transform: rotateZ(-18deg) rotateX(-12deg) rotateY(360deg);
+  }
+}
+@keyframes loader-orbit {
+  to {
+    transform: rotateZ(360deg);
+  }
+}
+@keyframes loader-rail {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(330%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-loader-emblem *,
+  .app-loader-rail > i {
+    animation: none;
+  }
+  .app-loader-core {
+    transform: rotateZ(-18deg) rotateX(-12deg);
+  }
+  .app-loader-rail > i {
+    margin-left: 28%;
+  }
+}

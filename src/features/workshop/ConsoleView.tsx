@@ -1,5 +1,5 @@
 import { PlayIcon } from '@phosphor-icons/react';
-import { AnimatedNumber, ArrowSwap, StatusBadge } from '../shared';
+import { AnimatedNumber, ArrowSwap, StatusBadge } from '../../shared/ui';
 import { stations, type ViewProps } from './stations';
 
 const topics = ['Карьера', 'AI', 'SQL', 'Найм', 'Пет-проекты', 'Собеседования', 'Обучение'];

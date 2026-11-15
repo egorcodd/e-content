@@ -8,7 +8,7 @@ import {
   TrayArrowDownIcon,
   CircuitryIcon,
 } from '@phosphor-icons/react';
-import type { StatusKind } from '../shared';
+import type { StatusKind } from '../../shared/ui';
 
 export const stations = [
   {
@@ -85,7 +85,7 @@ export const stations = [
 ] as const;
 export const orchestrator = {
   id: 'orchestrator',
-  name: 'Оркестратор',
+  name: 'Ядро',
   sub: 'Сборка общего результата',
   Icon: CircuitryIcon,
   tint: undefined,

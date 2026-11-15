@@ -56,7 +56,7 @@ async function checkLayout(width) {
   await page.keyboard.press('Escape');
 }
 try {
-  await page.goto((process.env.PREVIEW_URL || 'http://127.0.0.1:5186') + '/#library');
+  await page.goto((process.env.PREVIEW_URL || 'http://127.0.0.1:5186') + '/design-system/#library');
   await page.evaluate(() => document.fonts.ready);
   await settled();
   await openCareer();
@@ -111,7 +111,7 @@ try {
   await settled();
   fs.mkdirSync('.qa/library-polish', { recursive: true });
   await library.screenshot({ path: '.qa/library-polish/empty.png' });
-  await library.getByRole('button', { name: 'Добавить демоматериал', exact: true }).click();
+  await library.getByRole('button', { name: 'Добавить материал', exact: true }).click();
   await settled();
   assert.equal(await library.locator('.lib-paper-card').count(), 1);
   await search.fill('несуществующий материал');

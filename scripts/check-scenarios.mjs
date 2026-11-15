@@ -25,11 +25,13 @@ async function choose(name) {
   await section.getByRole('button', { name, exact: true }).click();
 }
 try {
-  await page.goto((process.env.PREVIEW_URL || 'http://127.0.0.1:5186') + '/#scenarios');
+  await page.goto(
+    (process.env.PREVIEW_URL || 'http://127.0.0.1:5186') + '/design-system/#scenarios',
+  );
   await phase('empty');
   assert.equal(await section.locator('.sg-export').isDisabled(), true);
   assert.equal(await section.locator('.sg-source').filter({ hasText: 'Не подключён' }).count(), 2);
-  await choose('Подключить демоисточники');
+  await choose('Подключить источники');
   await phase('ready');
   await choose('Запустить цикл');
   await phase('done');

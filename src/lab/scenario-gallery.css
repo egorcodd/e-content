@@ -1,7 +1,3 @@
-.sg-demo-label {
-  color: var(--muted);
-  font-size: 13px;
-}
 .sg-switcher {
   display: flex;
   justify-content: space-between;

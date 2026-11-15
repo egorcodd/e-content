@@ -43,7 +43,7 @@ try {
     await page.getByRole('link', { name: 'Аналитика', exact: true }).getAttribute('aria-current'),
     'page',
   );
-  assert.equal(await page.locator('canvas').count(), 0);
+  assert.equal(await page.locator('.analytics-page canvas').count(), 0);
   assert.equal(await page.locator('.ap-kpi-value').count(), 5);
   await page.getByRole('heading', { name: 'Рост аудитории', exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Источники просмотров', exact: true }).waitFor();

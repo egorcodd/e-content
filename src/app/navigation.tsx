@@ -39,12 +39,21 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     const url = new URL(href, window.location.href);
     const path = normalize(url.pathname);
     const page = pageForPath(path);
-    if (url.origin !== window.location.origin || !page) {
+    if (url.origin !== window.location.origin) {
       window.location.assign(url.href);
       return;
     }
     const id = ++sequence.current;
     clearTimeout(deadline.current);
+    if (!page) {
+      request.current = null;
+      setPending(null);
+      if (historyMode === 'push') window.history.pushState(null, '', url);
+      current.current = path;
+      renderedHref.current = url.href;
+      setPathname(path);
+      return;
+    }
     if (path === current.current) {
       request.current = null;
       setPending(null);

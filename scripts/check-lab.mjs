@@ -20,7 +20,7 @@ const page = await context.newPage();
 page.setDefaultTimeout(15000);
 const errors = [];
 const checks = [];
-page.on('pageerror', (e) => errors.push(e.message));
+page.on('pageerror', (e) => errors.push(e.stack ?? e.message));
 async function download(click, name) {
   const event = page.waitForEvent('download');
   await click();
@@ -189,16 +189,19 @@ try {
   await page.locator('.wg-iso canvas').waitFor();
   assert.equal(await page.locator('.wg-iso').getAttribute('data-surface'), 'contour');
   checks.push('three-isometric-materials-on-one-scene');
-  const collector = page.getByRole('button', { name: 'Открыть участок Сбор', exact: true });
-  await collector.hover();
+  const commentsNode = page.getByRole('button', {
+    name: 'Открыть участок Комментарии',
+    exact: true,
+  });
+  await commentsNode.hover();
   await page.waitForFunction(() =>
     document.querySelector('#wg-route-hint').textContent.includes('Telegram, TikTok'),
   );
-  assert.match(await page.locator('#wg-route-hint').innerText(), /Исходящие: Комментарии/);
+  assert.match(await page.locator('#wg-route-hint').innerText(), /Исходящие: Сбор/);
   await page.mouse.move(0, 0);
   assert.equal(await page.locator('#wg-route-hint').innerText(), '');
-  await collector.focus();
-  assert.equal(await collector.getAttribute('aria-describedby'), 'wg-route-hint');
+  await commentsNode.focus();
+  assert.equal(await commentsNode.getAttribute('aria-describedby'), 'wg-route-hint');
   checks.push('route-neighborhood-on-hover-and-keyboard-focus');
   const telegram = page.getByRole('button', { name: 'Открыть участок Telegram', exact: true });
   await telegram.click();
@@ -246,6 +249,10 @@ try {
     }).observe(receipt, { childList: true, subtree: true, characterData: true });
   });
   await page.getByRole('button', { name: 'Запустить весь цикл', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Повторить обработку', exact: true })
+    .getByRole('button', { name: 'Запустить заново', exact: true })
+    .click();
   await page.locator('.wg-process-panel').waitFor();
   const stop = page
     .locator('.wg-process-panel')
@@ -253,30 +260,38 @@ try {
   await stop.focus();
   await page.waitForTimeout(1500);
   assert.equal(await stop.evaluate((e) => e === document.activeElement), true);
+  await page
+    .locator('.ec-section-controls')
+    .getByRole('button', { name: 'Запустить весь цикл', exact: true })
+    .waitFor();
   await page.getByRole('button', { name: 'Скачать Markdown', exact: true }).waitFor();
   assert.equal(await page.locator('.wg-events>div').count(), 7);
   assert.deepEqual(await page.evaluate(() => window.__workshopRoutes), [
-    'Telegram Сбор telegram.md',
-    'TikTok Сбор tiktok.md',
-    'Сбор Комментарии inbox.md',
-    'Комментарии Темы comments.md',
+    'Telegram Комментарии telegram.md',
+    'TikTok Комментарии tiktok.md',
+    'Комментарии Сбор comments.md',
+    'Сбор Темы inbox.md',
+    'Сбор Аналитика inbox.md',
     'Темы Материалы ideas.md',
-    'Материалы Аналитика materials.md',
   ]);
   assert.equal(await page.locator('.wg-flow-status').innerText(), '');
   checks.push('six-directed-file-handoffs');
   assert.deepEqual(await page.evaluate(() => window.__workshopArrivals), [
-    'Сбор: получен telegram.md',
-    'Сбор: получен tiktok.md',
-    'Комментарии: получен inbox.md',
-    'Темы: получен comments.md',
+    'Комментарии: получен telegram.md',
+    'Комментарии: получен tiktok.md',
+    'Сбор: получен comments.md',
+    'Темы: получен inbox.md',
+    'Аналитика: получен inbox.md',
     'Материалы: получен ideas.md',
-    'Аналитика: получен materials.md',
   ]);
   checks.push('delivery-confirmation-at-each-input-port');
   await page.keyboard.press('Escape');
   checks.push('full-cycle-without-focus-theft');
   await page.getByRole('button', { name: 'Запустить весь цикл', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Повторить обработку', exact: true })
+    .getByRole('button', { name: 'Запустить заново', exact: true })
+    .click();
   await page.waitForFunction(() =>
     document.querySelector('.wg-flow-status').textContent.includes('telegram.md'),
   );
@@ -285,7 +300,10 @@ try {
     .getByRole('button', { name: 'Остановить цикл', exact: true })
     .click();
   assert.equal(
-    await page.getByRole('button', { name: 'Запустить весь цикл', exact: true }).count(),
+    await page
+      .locator('.wg-workspace-toolbar, .ec-section-controls')
+      .getByRole('button', { name: 'Запустить весь цикл', exact: true })
+      .count(),
     1,
   );
   assert.equal(await page.locator('.wg-active').count(), 0);

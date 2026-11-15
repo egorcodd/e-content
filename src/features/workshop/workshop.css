@@ -1196,3 +1196,36 @@
     font-size: 44px;
   }
 }
+.wg-configured-sources {
+  border: 1px solid #303030;
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 18px;
+  font-size: 13px;
+}
+.wg-configured-sources > div,
+.wg-configured-sources > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wg-configured-sources > div {
+  color: #999;
+}
+.wg-configured-sources ul {
+  list-style: none;
+  padding: 0;
+  margin: 9px 0;
+}
+.wg-configured-sources li {
+  overflow-wrap: anywhere;
+}
+.wg-configured-sources p {
+  color: #888;
+  font-size: 12px;
+  margin: 9px 0;
+}
+.wg-configured-sources > button {
+  margin-top: 10px;
+  font-size: 12px;
+}

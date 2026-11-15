@@ -16,6 +16,7 @@ import {
   Segment,
   StatusBadge,
   StatusIcon,
+  LabDialog,
   type StatusKind,
 } from '../../shared/ui';
 import { stations, hubStations, orchestrator, type ViewProps } from './stations';
@@ -24,6 +25,9 @@ import type { SurfaceStyle } from './IsoView';
 import { connections, waitForStage, type WorkshopTransfer, type WorkshopArrival } from './workflow';
 import './workshop.css';
 import { preloadWorkshopScene } from './scene-loader';
+import { readWorkshopMemory, writeWorkshopMemory } from './workspace-cache';
+import { readMaterial, saveRunArtifact } from '../materials/repository';
+import { WorkshopSources } from '../sources/WorkshopSources';
 
 const IsoView = lazy(preloadWorkshopScene);
 let webgl: boolean | undefined;
@@ -76,27 +80,40 @@ export function Workshop({
   notify,
   presentation = 'gallery',
   onReady,
+  enabled = true,
+  openMaterial,
+  openSources,
 }: {
   notify: (s: string) => void;
   presentation?: 'gallery' | 'workspace';
   onReady?: () => void;
+  enabled?: boolean;
+  openMaterial?: (id: string) => void;
+  openSources?: (platform: 'telegram' | 'tiktok') => void;
 }) {
   const workspace = presentation === 'workspace';
+  const memory = useRef(workspace ? readWorkshopMemory() : null).current;
   const [version, setVersion] = useState<'chain' | 'hub'>(workspace ? 'hub' : 'chain');
   const items = version === 'hub' ? hubStations : stations;
   const [batch, setBatch] = useState<WorkshopTransfer[]>([]);
   const [batchArrivals, setBatchArrivals] = useState<WorkshopArrival[]>([]);
-  const [receivedCount, setReceivedCount] = useState(0);
+  const [receivedFrom, setReceivedFrom] = useState<string[]>(memory?.received ?? []);
+  const receivedCount = receivedFrom.length;
   const [surface, setSurface] = useState<SurfaceStyle>('smoke');
   const [selected, setSelected] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [cycle, setCycle] = useState(false);
   const [step, setStep] = useState(-1);
-  const [finished, setFinished] = useState(false);
   const [active, setActive] = useState<string | null>(null);
-  const [done, setDone] = useState<string[]>([]);
-  const [halted, setHalted] = useState<string | null>(null);
-  const [events, setEvents] = useState<string[]>([]);
+  const [done, setDone] = useState<string[]>(memory?.done ?? []);
+  const [halted, setHalted] = useState<string | null>(memory?.interrupted ?? null);
+  const [events, setEvents] = useState<string[]>(memory?.events ?? []);
+  const [stationSteps, setStationSteps] = useState<Record<string, number>>(memory?.steps ?? {});
+  const [resultIds, setResultIds] = useState<Record<string, string>>(memory?.resultIds ?? {});
+  const [repeat, setRepeat] = useState<boolean | null>(null);
+  const pendingRepeat = useRef<boolean | null>(null);
+  const panelVisible = useRef(false);
+  const followRun = useRef(true);
   const [transfer, setTransfer] = useState<WorkshopTransfer | null>(null);
   const [arrival, setArrival] = useState<WorkshopArrival | null>(null);
   const control = useRef<AbortController | null>(null);
@@ -105,6 +122,17 @@ export function Workshop({
   const previous = useRef<HTMLElement | null>(null);
   const reduced = useReducedMotion();
   const station = items.find((s) => s.id === selected);
+  useEffect(() => {
+    if (workspace)
+      writeWorkshopMemory({
+        done,
+        events,
+        steps: stationSteps,
+        received: receivedFrom,
+        resultIds,
+        interrupted: running ? activeRef.current : halted,
+      });
+  }, [workspace, done, events, stationSteps, receivedFrom, resultIds, running, halted, active]);
   useEffect(() => () => control.current?.abort(), []);
   useEffect(() => {
     if (!hasWebGL()) onReady?.();
@@ -128,26 +156,32 @@ export function Workshop({
     setBatchArrivals([]);
   }
   function close() {
-    stop();
+    panelVisible.current = false;
+    followRun.current = false;
     setSelected(null);
     previous.current?.focus({ preventScroll: true });
   }
   function choose(id: string) {
-    stop();
+    panelVisible.current = true;
+    followRun.current = false;
     previous.current = document.activeElement as HTMLElement;
     setSelected(id);
-    setCycle(false);
-    setStep(-1);
-    setFinished(false);
-    setDone([]);
-    setHalted(null);
-    setEvents([]);
     focusPanel();
   }
   const panelOpen = !!selected;
   useEffect(() => {
-    if (!panelOpen) return;
+    if (!enabled) {
+      panelVisible.current = false;
+      followRun.current = false;
+      setSelected(null);
+      setRepeat(null);
+      pendingRepeat.current = null;
+    }
+  }, [enabled]);
+  useEffect(() => {
+    if (!panelOpen || !enabled) return;
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || document.querySelector('dialog[open]')) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         close();
@@ -155,46 +189,72 @@ export function Workshop({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [panelOpen]);
+  }, [panelOpen, enabled]);
   async function run(all: boolean) {
-    if (version === 'hub' && selected === 'orchestrator') all = true;
+    const coreOnly = selected === 'orchestrator' && halted === 'orchestrator' && !all;
+    if (version === 'hub' && selected === 'orchestrator' && !coreOnly) all = true;
     if (all) {
       previous.current = document.activeElement as HTMLElement;
       if (!selected) focusPanel();
     }
     stop();
+    panelVisible.current = true;
+    followRun.current = true;
+    const runId = crypto.randomUUID();
     const abort = new AbortController();
     control.current = abort;
     setRunning(true);
     setCycle(all);
-    setFinished(false);
-    setDone([]);
+
     setHalted(null);
-    setEvents([]);
-    setReceivedCount(0);
-    const nodes = all ? stations : stations.filter((s) => s.id === selected);
-    if (!nodes.length) {
+    const nodes = coreOnly ? [] : all ? stations : stations.filter((s) => s.id === selected);
+    setDone((old) =>
+      old.filter((id) => id !== 'orchestrator' && !nodes.some((node) => node.id === id)),
+    );
+    if (!nodes.length && !coreOnly) {
       setRunning(false);
       return;
     }
     try {
       for (const node of nodes) {
         if (abort.signal.aborted) return;
-        setSelected(node.id);
+        if (panelVisible.current && followRun.current) setSelected(node.id);
         setActive(node.id);
         activeRef.current = node.id;
-        for (let i = 0; i < node.steps.length; i++) {
+        const resumeAt = !all && halted === node.id ? (stationSteps[node.id] ?? 0) : 0;
+        for (let i = resumeAt; i < node.steps.length; i++) {
           if (abort.signal.aborted) return;
           setStep(i);
           await waitForStage(all ? 300 : 560, abort.signal);
+          if (!abort.signal.aborted) setStationSteps((old) => ({ ...old, [node.id]: i + 1 }));
         }
         if (abort.signal.aborted) return;
         setStep(node.steps.length);
+        if (workspace) {
+          const result = await saveRunArtifact({
+            id: `run-${runId}-${node.id}`,
+            runId,
+            stationId: node.id,
+            folderId: 'reports',
+            title: `${node.name} · ${new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' }).format(new Date())}`,
+            source: node.id === 'telegram' || node.id === 'tiktok' ? node.id : 'workshop',
+            favorite: false,
+            body: `# ${node.name}\n\nФайл: ${node.steps.at(-1)}\n\n## Структура обработки\n\n${node.steps
+              .slice(0, -1)
+              .map((label) => `- ${label}`)
+              .join(
+                '\n',
+              )}\n\n## Данные\n\nСетевой источник ещё не подключён. Комментарии и публикации в этот файл не загружались.\n`,
+          });
+          if (abort.signal.aborted) return;
+          setResultIds((old) => ({ ...old, [node.id]: result.id }));
+        }
         setDone((old) => [...old, node.id]);
-        setEvents((old) => [`${node.name} / ${node.steps.at(-1)}`, ...old].slice(0, 7));
+        const event = `${node.name} / ${node.steps.at(-1)}`;
+        setEvents((old) => [event, ...old.filter((item) => item !== event)].slice(0, 7));
         if (all) {
-          const edge = connections.find((connection) => connection.from === node.id);
-          if (edge) {
+          const outgoing = connections.filter((connection) => connection.from === node.id);
+          for (const edge of outgoing) {
             setActive(null);
             const duration = 850;
             setTransfer({ ...edge, startedAt: performance.now(), duration });
@@ -206,7 +266,7 @@ export function Workshop({
         }
       }
       if (version === 'hub') {
-        setSelected('orchestrator');
+        if (panelVisible.current && followRun.current) setSelected('orchestrator');
         setActive(null);
         activeRef.current = 'orchestrator';
         setStep(-1);
@@ -228,20 +288,48 @@ export function Workshop({
             receivedAt: performance.now(),
           })),
         );
-        setReceivedCount(nodes.length);
+        setReceivedFrom((old) => [...new Set([...old, ...nodes.map((node) => node.id)])]);
         setActive('orchestrator');
-        for (let i = 0; i < orchestrator.steps.length; i++) {
+        for (
+          let i = coreOnly ? (stationSteps.orchestrator ?? 0) : 0;
+          i < orchestrator.steps.length;
+          i++
+        ) {
           setStep(i);
           await waitForStage(320, abort.signal);
           if (abort.signal.aborted) return;
+          setStationSteps((old) => ({ ...old, orchestrator: i + 1 }));
         }
         setStep(orchestrator.steps.length);
+        if (workspace) {
+          const result = await saveRunArtifact({
+            id: `run-${runId}-orchestrator`,
+            runId,
+            stationId: 'orchestrator',
+            folderId: 'reports',
+            title: `Ядро · ${new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' }).format(new Date())}`,
+            source: 'workshop',
+            favorite: false,
+            body: `# Отчёт запуска цеха\n\nЗапуск: ${runId}\n\n## Участки\n\n${nodes.map((node) => `- ${node.name}: ${node.steps.at(-1)}`).join('\n')}\n\nЭто технический отчёт обработки. Найденные идеи и их основания сохраняются отдельно в библиотеке. Сетевой сбор комментариев ещё не подключён; этот запуск не создавал идеи из источников.\n`,
+          });
+          if (abort.signal.aborted) return;
+          setResultIds((old) => ({ ...old, orchestrator: result.id }));
+        }
         setDone((old) => [...old, 'orchestrator']);
-        setEvents((old) => ['Ядро / workspace.md', ...old].slice(0, 8));
+        setEvents((old) =>
+          ['Ядро / workspace.md', ...old.filter((item) => item !== 'Ядро / workspace.md')].slice(
+            0,
+            8,
+          ),
+        );
       }
       if (!abort.signal.aborted) {
-        setFinished(true);
         notify(all ? 'Полный цикл завершён' : 'Обработка участка завершена');
+      }
+    } catch (error) {
+      if (!abort.signal.aborted) {
+        setHalted(activeRef.current);
+        notify(error instanceof Error ? error.message : 'Не удалось сохранить результат');
       }
     } finally {
       if (control.current === abort) {
@@ -267,7 +355,13 @@ export function Workshop({
     progress[s.id] = done.includes(s.id)
       ? 1
       : active === s.id || halted === s.id
-        ? Math.max(0, Math.min(1, (step + (active === s.id ? 0.5 : 0)) / s.steps.length))
+        ? Math.max(
+            0,
+            Math.min(
+              1,
+              (active === s.id ? step + 0.5 : (stationSteps[s.id] ?? 0)) / s.steps.length,
+            ),
+          )
         : 0;
   }
   const view: ViewProps = { selected, active, running, step, states, progress, choose };
@@ -285,13 +379,21 @@ export function Workshop({
         ))}
       </div>
     );
-  const panelState: StatusKind = finished
-    ? 'done'
-    : running
-      ? 'run'
-      : selected && halted === selected
-        ? 'pause'
-        : 'wait';
+  const panelState: StatusKind = selected ? states[selected] : 'wait';
+  const panelStep =
+    selected && done.includes(selected)
+      ? (station?.steps.length ?? 0)
+      : selected === active
+        ? step
+        : selected
+          ? (stationSteps[selected] ?? -1)
+          : -1;
+  const panelRunning = panelState === 'run';
+  const panelControlsRun = running && (panelRunning || (followRun.current && cycle));
+  const requestRun = (all: boolean) => {
+    if ((all && done.length > 0) || (selected && done.includes(selected))) setRepeat(all);
+    else void run(all);
+  };
   return (
     <section id="workshop" className={`wg-section ${workspace ? 'wg-workspace' : 'ec-section'}`}>
       {!workspace && (
@@ -305,10 +407,11 @@ export function Workshop({
                 setSelected(null);
                 setDone([]);
                 setEvents([]);
-                setFinished(false);
+
                 setHalted(null);
                 setStep(-1);
-                setReceivedCount(0);
+                setReceivedFrom([]);
+                setStationSteps({});
                 setVersion(id as 'chain' | 'hub');
               }}
               values={[
@@ -339,7 +442,7 @@ export function Workshop({
           </button>
           <button
             className={'ec-button ec-white ' + (running ? 'is-running' : '')}
-            onClick={() => (running ? stop() : void run(true))}
+            onClick={() => (running ? stop() : requestRun(true))}
           >
             {running ? <StopIcon size={14} weight="fill" /> : <PlayIcon size={14} weight="fill" />}
             {running ? 'Остановить цикл' : 'Запустить весь цикл'}
@@ -405,6 +508,7 @@ export function Workshop({
                   arrivals={batchArrivals}
                   receivedCount={receivedCount}
                   onReady={onReady}
+                  enabled={enabled}
                 />
               </Suspense>
             </SceneBoundary>
@@ -451,6 +555,15 @@ export function Workshop({
                 <small>{station.sub}</small>
               </div>
             </div>
+            {workspace && openSources && (station.id === 'telegram' || station.id === 'tiktok') && (
+              <WorkshopSources
+                platform={station.id}
+                open={() => {
+                  close();
+                  openSources(station.id as 'telegram' | 'tiktok');
+                }}
+              />
+            )}
             <div className="wg-panel-source">
               <FileTextIcon size={16} />
               {station.steps.at(-1)}
@@ -472,25 +585,34 @@ export function Workshop({
             <ol className="wg-steps" aria-live="polite">
               {station.steps.map((label, i) => {
                 const kind: StatusKind =
-                  step > i ? 'done' : step === i ? (running ? 'run' : 'pause') : 'wait';
+                  panelStep > i
+                    ? 'done'
+                    : panelStep === i
+                      ? panelRunning
+                        ? 'run'
+                        : 'pause'
+                      : 'wait';
                 return (
-                  <li key={label} className={step > i ? 'is-done' : step === i ? 'is-current' : ''}>
+                  <li
+                    key={label}
+                    className={panelStep > i ? 'is-done' : panelStep === i ? 'is-current' : ''}
+                  >
                     <span className="wg-step-icon">
                       <StatusIcon kind={kind} size={18} key={kind} />
                     </span>
                     <div>
                       {label}
                       <small>
-                        {step > i
+                        {panelStep > i
                           ? 'Завершено'
-                          : step === i && running
+                          : panelStep === i && panelRunning
                             ? 'Выполняется…'
-                            : step === i
+                            : panelStep === i
                               ? 'Остановлено'
                               : 'Ожидание'}
                       </small>
                     </div>
-                    {step === i && running && (
+                    {panelStep === i && panelRunning && (
                       <motion.i
                         className="wg-step-scan"
                         layoutId="wg-step-scan"
@@ -502,48 +624,74 @@ export function Workshop({
               })}
             </ol>
             <div className="wg-panel-actions">
+              {workspace && panelState === 'done' && station.id === 'materials' && openMaterial && (
+                <button
+                  className="ec-button ec-white"
+                  onClick={() => {
+                    close();
+                    openMaterial('');
+                  }}
+                >
+                  <FileTextIcon size={16} />
+                  Открыть библиотеку идей
+                </button>
+              )}
               <button
                 className={'ec-button ec-white ' + (running ? 'is-running' : '')}
-                onClick={() => (running ? stop() : void run(cycle))}
+                disabled={running && !panelControlsRun}
+                onClick={() =>
+                  panelControlsRun
+                    ? stop()
+                    : requestRun(station.id === 'orchestrator' && halted !== station.id)
+                }
               >
-                {running ? (
+                {panelControlsRun ? (
                   <StopIcon size={14} weight="fill" />
                 ) : (
                   <PlayIcon size={14} weight="fill" />
                 )}
-                {running
-                  ? cycle
-                    ? 'Остановить цикл'
-                    : 'Остановить'
-                  : cycle
-                    ? 'Повторить цикл'
-                    : station.id === 'orchestrator'
-                      ? 'Запустить весь цикл'
-                      : 'Запустить участок'}
+                {running && !panelControlsRun
+                  ? 'Обработка продолжается'
+                  : panelControlsRun
+                    ? cycle
+                      ? 'Остановить цикл'
+                      : 'Остановить'
+                    : panelState === 'done'
+                      ? 'Запустить заново'
+                      : panelState === 'pause'
+                        ? 'Продолжить участок'
+                        : station.id === 'orchestrator'
+                          ? 'Запустить весь цикл'
+                          : 'Запустить участок'}
               </button>
               <AnimatePresence>
-                {finished && (
+                {panelState === 'done' && (
                   <motion.button
                     className="ec-button ec-glass"
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
-                    onClick={() =>
+                    onClick={async () => {
+                      const material =
+                        workspace && resultIds[station.id]
+                          ? await readMaterial(resultIds[station.id])
+                          : undefined;
                       downloadText(
-                        'e-content-report.md',
-                        '# e-content\n\n' + events.map((e) => '- ' + e).join('\n'),
-                      )
-                    }
+                        workspace ? station.steps.at(-1)! : 'e-content-report.md',
+                        material?.body ??
+                          '# e-content\n\n' + events.map((e) => '- ' + e).join('\n'),
+                      );
+                    }}
                   >
                     <DownloadSimpleIcon size={16} className="ec-ico-drop" />
-                    Скачать Markdown
+                    {workspace ? 'Скачать отчёт' : 'Скачать Markdown'}
                   </motion.button>
                 )}
               </AnimatePresence>
             </div>
             {events.length > 0 && (
               <div className="wg-events">
-                <h4>Материалы</h4>
+                <h4>{workspace ? 'Отчёты запуска' : 'Материалы'}</h4>
                 <AnimatePresence initial={false}>
                   {events.map((event) => (
                     <motion.div
@@ -562,6 +710,36 @@ export function Workshop({
               </div>
             )}
           </motion.aside>
+        )}
+      </AnimatePresence>
+      <AnimatePresence
+        onExitComplete={() => {
+          const all = pendingRepeat.current;
+          pendingRepeat.current = null;
+          if (all !== null) requestAnimationFrame(() => void run(all));
+        }}
+      >
+        {repeat !== null && (
+          <LabDialog title="Повторить обработку" close={() => setRepeat(null)}>
+            <p>
+              Сохранённые материалы останутся в библиотеке. Новый запуск создаст отдельный
+              результат.
+            </p>
+            <div className="ec-dialog-actions">
+              <button className="ec-button" onClick={() => setRepeat(null)}>
+                Отмена
+              </button>
+              <button
+                className="ec-button ec-white"
+                onClick={() => {
+                  pendingRepeat.current = repeat;
+                  setRepeat(null);
+                }}
+              >
+                Запустить заново
+              </button>
+            </div>
+          </LabDialog>
         )}
       </AnimatePresence>
     </section>

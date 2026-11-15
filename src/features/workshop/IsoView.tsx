@@ -134,7 +134,7 @@ function TelegramSource({ live }: { live: boolean }) {
   return (
     <group ref={plane} position-y={0.92} rotation-y={-0.35}>
       <mesh geometry={geometry}>
-        <Surface />
+        <Surface tint="#73899d" />
       </mesh>
     </group>
   );
@@ -162,7 +162,7 @@ function VideoSource({ live }: { live: boolean }) {
         <Surface />
       </RoundedBox>
       <mesh position={[0, 0, 0.058]} geometry={play}>
-        <Surface />
+        <Surface tint="#af8195" />
       </mesh>
       <mesh position={[0, -0.37, 0.058]}>
         <boxGeometry args={[0.53, 0.018, 0.008]} />
@@ -487,7 +487,7 @@ function Bars({ live }: { live: boolean }) {
   );
 }
 
-function OrchestratorModel({ live }: { live: boolean }) {
+function OrchestratorModel({ live, done }: { live: boolean; done: boolean }) {
   const t = useStationTime(live);
   const core = useRef<THREE.Group>(null);
   useFrame(() => {
@@ -510,13 +510,13 @@ function OrchestratorModel({ live }: { live: boolean }) {
       <group ref={core} position-y={0.95}>
         <mesh>
           <boxGeometry args={[0.5, 0.5, 0.5]} />
-          <Surface />
+          <Surface tint={done ? '#6d9f80' : undefined} />
         </mesh>
         {[0, 1, 2].map((i) => (
           <mesh key={i} rotation={[i === 0 ? Math.PI / 2 : 0, i === 1 ? Math.PI / 2 : 0, 0]}>
             <torusGeometry args={[0.47, 0.007, 4, 40]} />
             <meshBasicMaterial
-              color="#bcbcbc"
+              color={done ? '#83b395' : '#bcbcbc'}
               transparent
               opacity={0.22}
               toneMapped={false}
@@ -529,10 +529,10 @@ function OrchestratorModel({ live }: { live: boolean }) {
   );
 }
 
-function Machine({ station, live }: { station: Station; live: boolean }) {
+function Machine({ station, live, done }: { station: Station; live: boolean; done: boolean }) {
   switch (station.id) {
     case 'orchestrator':
-      return <OrchestratorModel live={live} />;
+      return <OrchestratorModel live={live} done={done} />;
     case 'telegram':
       return <TelegramSource live={live} />;
     case 'tiktok':
@@ -632,7 +632,7 @@ function StationNode({
           <boxGeometry args={[P * 0.3, 0.018, 0.004]} />
           <meshBasicMaterial color={color} transparent opacity={0.35} toneMapped={false} />
         </mesh>
-        <Machine station={station} live={active || hovered} />
+        <Machine station={station} live={active || hovered} done={state === 'done'} />
       </group>
     </group>
   );
@@ -731,11 +731,15 @@ function LabelSync({
   return null;
 }
 
-function SceneReady({ onReady }: { onReady?: () => void }) {
+function SceneReady({ onReady, enabled }: { onReady?: () => void; enabled: boolean }) {
   const frames = useRef(0);
   const reported = useRef(false);
+  useEffect(() => {
+    frames.current = 0;
+    reported.current = false;
+  }, [enabled]);
   useFrame(() => {
-    if (!onReady || reported.current || ++frames.current < 3) return;
+    if (!enabled || !onReady || reported.current || ++frames.current < 3) return;
     reported.current = true;
     onReady();
   });
@@ -756,6 +760,7 @@ export default function IsoView({
   arrivals = [],
   receivedCount = 0,
   onReady,
+  enabled = true,
 }: ViewProps & {
   surface?: SurfaceStyle;
   transfer?: WorkshopTransfer | null;
@@ -766,6 +771,7 @@ export default function IsoView({
   arrivals?: WorkshopArrival[];
   receivedCount?: number;
   onReady?: () => void;
+  enabled?: boolean;
 }) {
   const items = layout === 'hub' ? hubStations : stations;
   const edges = layout === 'hub' ? hubConnections : connections;
@@ -793,7 +799,7 @@ export default function IsoView({
       <Canvas
         orthographic
         dpr={[1, 2]}
-        frameloop={visible ? 'always' : 'never'}
+        frameloop={visible && enabled ? 'always' : 'never'}
         camera={{ position: [10, 10, 10], zoom: 70, near: -50, far: 100 }}
         gl={{ antialias: true, alpha: true }}
       >
@@ -827,7 +833,7 @@ export default function IsoView({
             />
           ))}
           <LabelSync labels={labels} items={items} />
-          <SceneReady onReady={onReady} />
+          <SceneReady onReady={onReady} enabled={enabled && visible} />
         </SurfaceContext.Provider>
       </Canvas>
       <div className="wg-iso-labels">

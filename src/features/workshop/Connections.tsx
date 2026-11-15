@@ -4,6 +4,7 @@ import { Line } from '@react-three/drei';
 import { useReducedMotion } from 'motion/react';
 import * as THREE from 'three';
 import type { Line2, LineSegments2 } from 'three-stdlib';
+import { createWorkshopRoute, type Positions } from './route';
 import {
   connections,
   type StationId,
@@ -11,38 +12,6 @@ import {
   type WorkshopArrival,
   type WorkshopConnection,
 } from './workflow';
-
-type Positions = Record<StationId, readonly [number, number]>;
-
-function createRoute(
-  a: readonly [number, number],
-  b: readonly [number, number],
-  halfSize: number,
-  radial = false,
-) {
-  const dx = b[0] - a[0],
-    dz = b[1] - a[1];
-  const xAxis = Math.abs(dx) > Math.abs(dz);
-  const offset = new THREE.Vector3(
-    xAxis ? Math.sign(dx) * halfSize : 0,
-    0,
-    xAxis ? 0 : Math.sign(dz) * halfSize,
-  );
-  if (radial) offset.set(dx, 0, dz).multiplyScalar(halfSize / Math.max(Math.abs(dx), Math.abs(dz)));
-  const start = new THREE.Vector3(a[0], 0.06, a[1]).add(offset);
-  const end = new THREE.Vector3(b[0], 0.06, b[1]).sub(offset);
-  const handle = Math.max(
-    0.2,
-    (xAxis ? Math.abs(end.x - start.x) : Math.abs(end.z - start.z)) * 0.55,
-  );
-  const direction = offset.clone().normalize().multiplyScalar(handle);
-  return new THREE.CubicBezierCurve3(
-    start,
-    start.clone().add(direction),
-    end.clone().sub(direction),
-    end,
-  );
-}
 
 function Route({
   from,
@@ -62,7 +31,7 @@ function Route({
   halfSize: number;
 }) {
   const route = useMemo(
-    () => createRoute(positions[from], positions[to], halfSize, to === 'orchestrator'),
+    () => createWorkshopRoute(from, to, positions, halfSize),
     [positions, from, to, halfSize],
   );
   const points = useMemo(() => route.getPoints(48), [route]);

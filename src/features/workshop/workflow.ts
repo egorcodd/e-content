@@ -3,12 +3,12 @@ import { stations } from './stations';
 
 export type StationId = Station['id'];
 export const connections = [
-  { from: 'telegram', to: 'collector' },
-  { from: 'tiktok', to: 'collector' },
-  { from: 'collector', to: 'comments' },
-  { from: 'comments', to: 'ideas' },
+  { from: 'telegram', to: 'comments' },
+  { from: 'tiktok', to: 'comments' },
+  { from: 'comments', to: 'collector' },
+  { from: 'collector', to: 'ideas' },
   { from: 'ideas', to: 'materials' },
-  { from: 'materials', to: 'analytics' },
+  { from: 'collector', to: 'analytics' },
 ] as const satisfies ReadonlyArray<{ from: StationId; to: StationId }>;
 export type WorkshopConnection = { from: StationId; to: StationId };
 export const hubConnections: readonly WorkshopConnection[] = [

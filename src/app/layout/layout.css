@@ -1,5 +1,6 @@
 .app-shell {
   --page-gutter: 24px;
+  --sidebar-expanded-width: 230px;
   height: 100dvh;
   min-height: 480px;
   background: #090909;
@@ -57,7 +58,7 @@
     box-shadow 0.45s;
 }
 .app-sidebar[data-expanded='true'] {
-  width: 230px;
+  width: var(--sidebar-expanded-width);
   background: #181818ed;
   box-shadow:
     12px 0 60px #0006,
@@ -208,12 +209,16 @@
 .app-skip:focus-visible {
   transform: none;
 }
-.app-toast {
+.app-toast-anchor {
   position: fixed;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 100;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+}
+.app-toast {
   display: flex;
   align-items: center;
   gap: 11px;
@@ -224,6 +229,15 @@
   max-width: calc(100vw - 24px);
   font-size: 13px;
   box-shadow: 0 8px 35px #0008;
+}
+.app-toast > svg,
+.app-toast > button {
+  flex-shrink: 0;
+}
+.app-toast > span {
+  min-width: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .app-loading {
   display: flex;
@@ -271,7 +285,10 @@
     opacity: 1;
   }
   .app-toast {
-    bottom: 18px;
+    max-width: 100%;
+  }
+  .app-toast-anchor {
+    bottom: 84px;
   }
   .app-skip {
     left: 76px;

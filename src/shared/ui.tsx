@@ -142,10 +142,12 @@ export function LabDialog({
   title,
   close,
   children,
+  className = '',
 }: {
   title: string;
   close: () => void;
   children: ReactNode;
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const reduced = useReducedMotion();
@@ -160,7 +162,7 @@ export function LabDialog({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 10, scale: 0.98 }}
       transition={{ duration: reduced ? 0 : 0.22 }}
-      className="ec-dialog"
+      className={`ec-dialog ${className}`}
       aria-label={title}
       onCancel={(e) => {
         e.preventDefault();

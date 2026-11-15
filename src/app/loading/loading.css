@@ -1,3 +1,5 @@
+@import '../../shared/styles/fonts.css';
+
 .app-loader-cover {
   position: fixed;
   inset: 0;
@@ -11,7 +13,7 @@
   place-items: center;
   background: #090909;
   color: #ececec;
-  font-family: var(--font-sans, 'Segoe UI', sans-serif);
+  font-family: 'Inter UI', 'Segoe UI', sans-serif;
 }
 .app-loader-content {
   display: flex;

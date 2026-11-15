@@ -9,6 +9,20 @@
       content="e-content — рабочее пространство для аналитики контента, материалов и агентов."
     />
     <link rel="icon" type="image/svg+xml" href="/mark.svg" />
+    <link
+      rel="preload"
+      href="/node_modules/@fontsource-variable/inter/files/inter-latin-opsz-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/node_modules/@fontsource-variable/inter/files/inter-cyrillic-opsz-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <style>
       html,
       body {
@@ -57,9 +71,13 @@
           ? 'Компоненты'
           : path === '/analytics'
             ? 'Аналитика'
-            : path === '/'
-              ? 'Цех агентов'
-              : '';
+            : path === '/materials'
+              ? 'Материалы'
+              : path === '/sources'
+                ? 'Источники'
+                : path === '/'
+                  ? 'Цех агентов'
+                  : '';
         document.querySelector('[data-initial-page-title]').textContent = title;
       })();
     </script>

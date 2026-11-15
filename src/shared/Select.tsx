@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { CaretDownIcon, CheckIcon } from '@phosphor-icons/react';
@@ -12,12 +12,14 @@ export function Select({
   options,
   onChange,
   className = '',
+  renderOption,
 }: {
   label: string;
   value: string;
   options: Option[];
   onChange: (value: string) => void;
   className?: string;
+  renderOption?: (option: Option) => ReactNode;
 }) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -152,7 +154,11 @@ export function Select({
           }
         }}
       >
-        <span>{options[selected]?.label}</span>
+        <span>
+          {options[selected] && renderOption
+            ? renderOption(options[selected])
+            : options[selected]?.label}
+        </span>
         <CaretDownIcon size={17} aria-hidden="true" />
       </button>
       {createPortal(
@@ -193,7 +199,7 @@ export function Select({
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() => choose(index)}
                   >
-                    <span>{option.label}</span>
+                    <span>{renderOption ? renderOption(option) : option.label}</span>
                     {value === option.value && <CheckIcon size={17} aria-hidden="true" />}
                   </div>
                 ))}
@@ -201,7 +207,7 @@ export function Select({
             </div>
           )}
         </AnimatePresence>,
-        document.body,
+        trigger.current?.closest('dialog') ?? document.body,
       )}
     </>
   );

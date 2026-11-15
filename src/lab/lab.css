@@ -699,52 +699,6 @@
   min-width: 30px;
   padding: 5px;
 }
-.ec-dialog {
-  background: #151515;
-  color: #eee;
-  border: 1px solid #444;
-  border-radius: 18px;
-  padding: 25px;
-  width: 480px;
-  max-width: calc(100vw - 24px);
-  max-height: 90dvh;
-  overflow: auto;
-  overscroll-behavior: contain;
-  box-shadow: 0 30px 100px #0007;
-}
-.ec-dialog[open] {
-  animation: ec-dialog-in 0.5s var(--ease-spring);
-}
-.ec-dialog::backdrop {
-  background: #000a;
-  animation: ec-fade-in 0.35s var(--ease-out);
-}
-@keyframes ec-dialog-in {
-  from {
-    opacity: 0;
-    scale: 0.95;
-    translate: 0 10px;
-  }
-}
-@keyframes ec-fade-in {
-  from {
-    opacity: 0;
-  }
-}
-.ec-dialog-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
-  margin-bottom: 27px;
-}
-.ec-dialog-head h3 {
-  font-size: 24px;
-  letter-spacing: -0.6px;
-}
-.ec-dialog-head .ec-icon {
-  margin-right: -7px;
-}
 .ec-form-field {
   display: block;
   font-size: 14px;
@@ -753,16 +707,6 @@
 .ec-form-field input {
   display: block;
   margin-top: 10px;
-}
-.ec-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-  margin-top: 25px;
-}
-.ec-dialog-actions .ec-button {
-  font-size: 14px;
 }
 .ec-mini-settings-wrap {
   overflow: hidden;

@@ -1,12 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import { Select } from '../shared/Select';
 import { Segment } from '../shared/ui';
@@ -24,6 +16,7 @@ import {
   XIcon,
 } from '@phosphor-icons/react';
 import './library-gallery.css';
+import { GlassFolder } from '../features/materials/GlassFolder';
 
 type LibraryFile = {
   id: string;
@@ -228,99 +221,6 @@ function download(file: LibraryFile) {
   anchor.download = `${file.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim()}.md`;
   anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function GlassFolder({ empty = false }: { empty?: boolean }) {
-  const id = useId();
-  return (
-    <svg
-      className={`lib-folder-art ${empty ? 'is-empty' : ''}`}
-      viewBox="0 0 220 168"
-      aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id={`lib-back-${id}`} x1="0" y1="0" x2="1" y2="1">
-          <stop stopColor="#535353" />
-          <stop offset=".45" stopColor="#373737" />
-          <stop offset="1" stopColor="#1d1d1d" />
-        </linearGradient>
-        <linearGradient id={`lib-front-${id}`} x1="0" y1="0" x2="1" y2=".8">
-          <stop stopColor="#555" stopOpacity=".95" />
-          <stop offset=".48" stopColor="#3a3a3a" stopOpacity=".88" />
-          <stop offset="1" stopColor="#292929" stopOpacity=".96" />
-        </linearGradient>
-        <linearGradient id={`lib-rim-${id}`} x1="0" y1="0" x2="1" y2="1">
-          <stop stopColor="#bcbcbc" stopOpacity=".65" />
-          <stop offset=".4" stopColor="#777" stopOpacity=".2" />
-          <stop offset="1" stopColor="#444" stopOpacity=".1" />
-        </linearGradient>
-        <linearGradient id={`lib-paper-${id}`} x1="0" y1="0" x2=".6" y2="1">
-          <stop stopColor="#ededed" />
-          <stop offset="1" stopColor="#aaa" />
-        </linearGradient>
-        <radialGradient id={`lib-light-${id}`} cx=".5" cy="0" r=".9">
-          <stop stopColor="#d4d4d4" stopOpacity=".2" />
-          <stop offset="1" stopColor="#fff" stopOpacity="0" />
-        </radialGradient>
-        <filter id={`lib-shadow-${id}`} x="-30%" y="-25%" width="160%" height="170%">
-          <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="#000" floodOpacity=".35" />
-        </filter>
-      </defs>
-      <ellipse cx="111" cy="151" rx="82" ry="8" fill="#000" opacity=".2" />
-      <path
-        className="lib-folder-back"
-        d="M29 51Q29 39 41 39H82L96 49H180Q192 49 192 62V132Q192 146 178 146H42Q29 146 29 132Z"
-        fill={`url(#lib-back-${id})`}
-        stroke="#777"
-        strokeOpacity=".25"
-      />
-      {!empty && (
-        <g className="lib-folder-papers">
-          <path d="M66 34H121L140 51V121H66Z" fill="#b0b0b0" transform="rotate(-10 103 90)" />
-          <path d="M88 24H139L160 44V126H88Z" fill={`url(#lib-paper-${id})`} />
-          <path d="M139 24V44H160Z" fill="#fff" fillOpacity=".85" />
-          <path d="M112 40H156L175 58V129H112Z" fill="#f1f1f1" transform="rotate(9 142 95)" />
-          <path
-            d="M125 75H151M125 83H160M125 91H155"
-            stroke="#777"
-            strokeOpacity=".2"
-            strokeWidth="2"
-            transform="rotate(9 142 95)"
-          />
-        </g>
-      )}
-      <g className="lib-folder-front" filter={`url(#lib-shadow-${id})`}>
-        <path
-          d="M22 67Q22 54 35 54H97L114 67H181Q198 67 198 83V133Q198 148 182 148H38Q22 148 22 132Z"
-          fill={`url(#lib-front-${id})`}
-          stroke={`url(#lib-rim-${id})`}
-          strokeWidth="1.2"
-        />
-        <path
-          d="M24 69Q24 56 37 56H96L113 69H180Q196 69 196 84V132Q196 146 182 146H38Q24 146 24 132Z"
-          fill={`url(#lib-light-${id})`}
-        />
-        <path
-          d="M35 56H96L113 69H180Q193 69 195 79"
-          fill="none"
-          stroke="#ddd"
-          strokeOpacity=".12"
-          strokeWidth="1"
-        />
-        <text
-          x="38"
-          y="130"
-          fill="#c0c0c0"
-          opacity=".35"
-          fontSize="12"
-          fontFamily="inherit"
-          letterSpacing="-.3"
-        >
-          e-content
-        </text>
-      </g>
-    </svg>
-  );
 }
 
 function LibraryDialog({

@@ -14,6 +14,16 @@ page.on('pageerror', (error) => errors.push(error.message));
 const waitReady = () => page.locator('.app-loader').waitFor({ state: 'detached' });
 const section = (name) => page.getByRole('link', { name, exact: true });
 try {
+  await page.goto(origin + '/design-system#components');
+  await page.getByRole('heading', { name: 'Элементы интерфейса', exact: true }).waitFor();
+  await page.evaluate(() => {
+    window.hashNavigationMarker = true;
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    location.hash = 'library';
+  });
+  await page.waitForTimeout(150);
+  assert.equal(await page.evaluate(() => window.hashNavigationMarker), true);
+  assert.deepEqual(errors, [], 'Section history must not recursively navigate');
   let releaseScene;
   const sceneGate = new Promise((resolve) => {
     releaseScene = resolve;

@@ -1,0 +1,28 @@
+.lib-folder-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 220px;
+  overflow: visible;
+}
+.lib-folder-papers,
+.lib-folder-front {
+  transition: transform 0.3s var(--ease-out);
+}
+.lib-folder-front {
+  transform-origin: 50% 85%;
+}
+.mp-folder:hover .lib-folder-papers,
+.mp-folder:focus-visible .lib-folder-papers {
+  transform: translateY(-6px);
+}
+.mp-folder:hover .lib-folder-front,
+.mp-folder:focus-visible .lib-folder-front {
+  transform: translateY(2px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lib-folder-papers,
+  .lib-folder-front {
+    transition: none;
+  }
+}

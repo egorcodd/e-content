@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import {
   defaultPlatformSettings,
   defaultSettings,
+  defaultRunLimits,
   parseSource,
   validatePlatformSettings,
   validateSettings,
@@ -9,22 +10,18 @@ import {
   type CollectionSettings,
   type PlatformSettings,
   type SourceConfiguration,
+  type RunLimits,
 } from './model';
+import { migrateConfiguration, validateConfiguration } from './collection-policy';
 
 const key = 'e-content-sources-v1';
 const empty: SourceConfiguration = {
+  schemaVersion: 2,
+  runLimits: { ...defaultRunLimits },
   sources: [],
   settings: { ...defaultSettings },
   platforms: defaultPlatformSettings,
 };
-// Saved before per-platform parameters existed (or damaged) — fall back to defaults only here.
-function readPlatforms(value?: PlatformSettings) {
-  try {
-    return value ? validatePlatformSettings(value) : defaultPlatformSettings;
-  } catch {
-    return defaultPlatformSettings;
-  }
-}
 let snapshot = empty;
 const listeners = new Set<() => void>();
 function read(): SourceConfiguration {
@@ -50,11 +47,11 @@ function read(): SourceConfiguration {
         return false;
       }
     });
-    return {
-      sources,
-      settings: validateSettings(stored.settings),
-      platforms: readPlatforms(stored.platforms),
-    };
+    try {
+      return migrateConfiguration({ ...stored, sources });
+    } catch {
+      return { ...structuredClone(empty), sources };
+    }
   } catch {
     return empty;
   }
@@ -67,12 +64,13 @@ window.addEventListener('storage', (event) => {
   }
 });
 function write(next: SourceConfiguration) {
+  const valid = validateConfiguration(next);
   try {
-    localStorage.setItem(key, JSON.stringify(next));
+    localStorage.setItem(key, JSON.stringify(valid));
   } catch {
     throw new Error('Не удалось сохранить настройки. Проверьте свободное место в браузере.');
   }
-  snapshot = next;
+  snapshot = valid;
   listeners.forEach((listener) => listener());
 }
 export function useSources() {
@@ -109,8 +107,13 @@ export function removeSource(id: string) {
   const current = read();
   write({ ...current, sources: current.sources.filter((item) => item.id !== id) });
 }
-export function saveCollectionSettings(settings: CollectionSettings) {
-  write({ ...read(), settings: validateSettings(settings) });
+export function saveCollectionSettings(settings: CollectionSettings, runLimits?: RunLimits) {
+  const current = read();
+  write({
+    ...current,
+    settings: validateSettings(settings),
+    runLimits: runLimits ?? current.runLimits,
+  });
 }
 export function savePlatformSettings<P extends keyof PlatformSettings>(
   platform: P,

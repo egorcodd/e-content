@@ -19,25 +19,30 @@ export type CollectionSettings = {
   maxPublications: number;
   maxComments: number;
 };
-/** `custom: null` — площадка берёт общие параметры сбора. */
+export type CollectionOverrides = Partial<CollectionSettings>;
+export type CommentOrder = 'platform' | 'recent';
+export type RunLimits = { maxPublications: number; maxComments: number; maxRequests: number };
+/** Missing override fields keep inheriting defaults. */
 export type PlatformSettings = {
   telegram: {
-    custom: CollectionSettings | null;
+    custom: CollectionOverrides | null;
     threads: boolean;
     forwards: boolean;
     minLength: number;
   };
   tiktok: {
-    custom: CollectionSettings | null;
+    custom: CollectionOverrides | null;
     replies: boolean;
-    order: 'top' | 'recent';
+    order: CommentOrder;
     minLikes: number;
   };
 };
 export type SourceConfiguration = {
+  schemaVersion: 2;
   sources: AnalysisSource[];
   settings: CollectionSettings;
   platforms: PlatformSettings;
+  runLimits: RunLimits;
 };
 export const platformNames = { telegram: 'Telegram', tiktok: 'TikTok' };
 export const kindNames = {
@@ -56,8 +61,21 @@ export const defaultSettings: CollectionSettings = {
 };
 export const defaultPlatformSettings: PlatformSettings = {
   telegram: { custom: null, threads: true, forwards: false, minLength: 20 },
-  tiktok: { custom: null, replies: true, order: 'top', minLikes: 0 },
+  tiktok: { custom: null, replies: true, order: 'platform', minLikes: 0 },
 };
+export const defaultRunLimits: RunLimits = {
+  maxPublications: 500,
+  maxComments: 10000,
+  maxRequests: 1000,
+};
+export const collectionFields = [
+  'period',
+  'comments',
+  'publications',
+  'metrics',
+  'maxPublications',
+  'maxComments',
+] as const;
 
 export const plural = (n: number, one: string, few: string, many: string) =>
   n % 10 === 1 && n % 100 !== 11
@@ -150,17 +168,54 @@ export function validateSettings(settings: CollectionSettings): CollectionSettin
     throw new Error('Выберите хотя бы один тип данных.');
   if (
     !Number.isInteger(settings.maxPublications) ||
-    settings.maxPublications < 1 ||
+    settings.maxPublications < 0 ||
     settings.maxPublications > 500
   )
-    throw new Error('Лимит публикаций: от 1 до 500.');
+    throw new Error('Лимит публикаций: от 0 до 500.');
   if (
     !Number.isInteger(settings.maxComments) ||
-    settings.maxComments < 1 ||
+    settings.maxComments < 0 ||
     settings.maxComments > 10000
   )
-    throw new Error('Лимит комментариев: от 1 до 10 000.');
-  return { ...settings };
+    throw new Error('Лимит комментариев: от 0 до 10 000.');
+  return Object.fromEntries(
+    collectionFields.map((key) => [key, settings[key]]),
+  ) as CollectionSettings;
+}
+
+export function validateOverrides(value: unknown): CollectionOverrides | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Проверьте индивидуальные параметры.');
+  const result: CollectionOverrides = {};
+  for (const key of collectionFields) {
+    if (!Object.hasOwn(value, key)) continue;
+    const field = (value as Record<string, unknown>)[key];
+    const valid =
+      key === 'period'
+        ? ['7', '30', '90'].includes(field as string)
+        : key === 'maxPublications'
+          ? Number.isInteger(field) && (field as number) >= 0 && (field as number) <= 500
+          : key === 'maxComments'
+            ? Number.isInteger(field) && (field as number) >= 0 && (field as number) <= 10000
+            : typeof field === 'boolean';
+    if (!valid) throw new Error(`Недопустимое индивидуальное значение: ${key}.`);
+    Object.assign(result, { [key]: field });
+  }
+  return result;
+}
+
+export function validateRunLimits(value: RunLimits): RunLimits {
+  const ranges = { maxPublications: 5000, maxComments: 100000, maxRequests: 10000 };
+  for (const key of Object.keys(ranges) as (keyof RunLimits)[]) {
+    if (!Number.isInteger(value?.[key]) || value[key] < 0 || value[key] > ranges[key])
+      throw new Error('Проверьте ограничения всего запуска.');
+  }
+  return {
+    maxPublications: value.maxPublications,
+    maxComments: value.maxComments,
+    maxRequests: value.maxRequests,
+  };
 }
 
 const whole = (value: unknown, max: number) =>
@@ -175,21 +230,21 @@ export function validatePlatformSettings(value: PlatformSettings): PlatformSetti
     throw new Error('Проверьте параметры Telegram.');
   if (
     typeof tiktok?.replies !== 'boolean' ||
-    !['top', 'recent'].includes(tiktok.order) ||
+    !['platform', 'recent', 'top'].includes(tiktok.order) ||
     !whole(tiktok.minLikes, 10000)
   )
     throw new Error('Проверьте параметры TikTok.');
   return {
     telegram: {
-      custom: telegram.custom ? validateSettings(telegram.custom) : null,
+      custom: validateOverrides(telegram.custom),
       threads: telegram.threads,
       forwards: telegram.forwards,
       minLength: telegram.minLength,
     },
     tiktok: {
-      custom: tiktok.custom ? validateSettings(tiktok.custom) : null,
+      custom: validateOverrides(tiktok.custom),
       replies: tiktok.replies,
-      order: tiktok.order,
+      order: (tiktok.order as string) === 'top' ? 'platform' : tiktok.order,
       minLikes: tiktok.minLikes,
     },
   };

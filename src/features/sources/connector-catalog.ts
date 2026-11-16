@@ -27,8 +27,9 @@ export const connectorCatalog = [
   detail: string;
 }[];
 
-export type SourceLayout = 'modules' | 'explorer' | 'steps' | 'classic';
+export type SourceLayout = 'dock' | 'modules' | 'explorer' | 'steps' | 'classic';
 export const sourceLayouts = [
+  { id: 'dock', label: 'Стыковка' },
   { id: 'modules', label: 'Модули' },
   { id: 'explorer', label: 'Обозреватель' },
   { id: 'steps', label: 'Шаги' },
@@ -40,5 +41,5 @@ export function readSourceLayout(): SourceLayout {
     saved = localStorage.getItem('e-content-sources-layout');
   } catch {}
   const value = new URLSearchParams(location.search).get('layout') ?? saved;
-  return sourceLayouts.some((item) => item.id === value) ? (value as SourceLayout) : 'modules';
+  return sourceLayouts.some((item) => item.id === value) ? (value as SourceLayout) : 'dock';
 }

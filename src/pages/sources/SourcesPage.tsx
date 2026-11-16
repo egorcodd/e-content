@@ -444,6 +444,7 @@ export default function SourcesPage({ notify }: { notify: (text: string) => void
         accounts={accounts}
         sources={configuration.sources}
         settings={configuration.settings}
+        platforms={configuration.platforms}
         loading={loading}
         unavailable={!!connectionError}
         connect={(id) => {
@@ -456,6 +457,9 @@ export default function SourcesPage({ notify }: { notify: (text: string) => void
         }}
         refresh={() => void refresh()}
         add={(platform) => setForm({ platform })}
+        edit={(source) => setForm({ source })}
+        remove={setRemove}
+        notify={notify}
         browser={sourceBrowser}
         settingsForm={settingsPanel}
         classicConnections={classicConnections}

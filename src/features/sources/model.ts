@@ -19,7 +19,26 @@ export type CollectionSettings = {
   maxPublications: number;
   maxComments: number;
 };
-export type SourceConfiguration = { sources: AnalysisSource[]; settings: CollectionSettings };
+/** `custom: null` — площадка берёт общие параметры сбора. */
+export type PlatformSettings = {
+  telegram: {
+    custom: CollectionSettings | null;
+    threads: boolean;
+    forwards: boolean;
+    minLength: number;
+  };
+  tiktok: {
+    custom: CollectionSettings | null;
+    replies: boolean;
+    order: 'top' | 'recent';
+    minLikes: number;
+  };
+};
+export type SourceConfiguration = {
+  sources: AnalysisSource[];
+  settings: CollectionSettings;
+  platforms: PlatformSettings;
+};
 export const platformNames = { telegram: 'Telegram', tiktok: 'TikTok' };
 export const kindNames = {
   channel: 'Канал',
@@ -35,6 +54,17 @@ export const defaultSettings: CollectionSettings = {
   maxPublications: 50,
   maxComments: 1000,
 };
+export const defaultPlatformSettings: PlatformSettings = {
+  telegram: { custom: null, threads: true, forwards: false, minLength: 20 },
+  tiktok: { custom: null, replies: true, order: 'top', minLikes: 0 },
+};
+
+export const plural = (n: number, one: string, few: string, many: string) =>
+  n % 10 === 1 && n % 100 !== 11
+    ? one
+    : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)
+      ? few
+      : many;
 
 export function parseSource(input: string, platform: Platform) {
   let value = input.trim();
@@ -131,4 +161,36 @@ export function validateSettings(settings: CollectionSettings): CollectionSettin
   )
     throw new Error('Лимит комментариев: от 1 до 10 000.');
   return { ...settings };
+}
+
+const whole = (value: unknown, max: number) =>
+  Number.isInteger(value) && (value as number) >= 0 && (value as number) <= max;
+export function validatePlatformSettings(value: PlatformSettings): PlatformSettings {
+  const { telegram, tiktok } = value;
+  if (
+    typeof telegram?.threads !== 'boolean' ||
+    typeof telegram.forwards !== 'boolean' ||
+    !whole(telegram.minLength, 500)
+  )
+    throw new Error('Проверьте параметры Telegram.');
+  if (
+    typeof tiktok?.replies !== 'boolean' ||
+    !['top', 'recent'].includes(tiktok.order) ||
+    !whole(tiktok.minLikes, 10000)
+  )
+    throw new Error('Проверьте параметры TikTok.');
+  return {
+    telegram: {
+      custom: telegram.custom ? validateSettings(telegram.custom) : null,
+      threads: telegram.threads,
+      forwards: telegram.forwards,
+      minLength: telegram.minLength,
+    },
+    tiktok: {
+      custom: tiktok.custom ? validateSettings(tiktok.custom) : null,
+      replies: tiktok.replies,
+      order: tiktok.order,
+      minLikes: tiktok.minLikes,
+    },
+  };
 }

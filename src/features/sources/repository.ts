@@ -1,15 +1,30 @@
 import { useSyncExternalStore } from 'react';
 import {
+  defaultPlatformSettings,
   defaultSettings,
   parseSource,
+  validatePlatformSettings,
   validateSettings,
   type AnalysisSource,
   type CollectionSettings,
+  type PlatformSettings,
   type SourceConfiguration,
 } from './model';
 
 const key = 'e-content-sources-v1';
-const empty: SourceConfiguration = { sources: [], settings: { ...defaultSettings } };
+const empty: SourceConfiguration = {
+  sources: [],
+  settings: { ...defaultSettings },
+  platforms: defaultPlatformSettings,
+};
+// Saved before per-platform parameters existed (or damaged) — fall back to defaults only here.
+function readPlatforms(value?: PlatformSettings) {
+  try {
+    return value ? validatePlatformSettings(value) : defaultPlatformSettings;
+  } catch {
+    return defaultPlatformSettings;
+  }
+}
 let snapshot = empty;
 const listeners = new Set<() => void>();
 function read(): SourceConfiguration {
@@ -35,7 +50,11 @@ function read(): SourceConfiguration {
         return false;
       }
     });
-    return { sources, settings: validateSettings(stored.settings) };
+    return {
+      sources,
+      settings: validateSettings(stored.settings),
+      platforms: readPlatforms(stored.platforms),
+    };
   } catch {
     return empty;
   }
@@ -92,4 +111,14 @@ export function removeSource(id: string) {
 }
 export function saveCollectionSettings(settings: CollectionSettings) {
   write({ ...read(), settings: validateSettings(settings) });
+}
+export function savePlatformSettings<P extends keyof PlatformSettings>(
+  platform: P,
+  value: PlatformSettings[P],
+) {
+  const current = read();
+  write({
+    ...current,
+    platforms: validatePlatformSettings({ ...current.platforms, [platform]: value }),
+  });
 }

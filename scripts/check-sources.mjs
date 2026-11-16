@@ -1,7 +1,13 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { parseSource, validateSettings, defaultSettings } from '../src/features/sources/model.ts';
+import {
+  parseSource,
+  validateSettings,
+  validatePlatformSettings,
+  defaultSettings,
+  defaultPlatformSettings,
+} from '../src/features/sources/model.ts';
 
 assert.equal(
   parseSource('https://t.me/s/qualityqa/10?single#comment', 'telegram').url,
@@ -22,6 +28,16 @@ assert.throws(() =>
   validateSettings({ ...defaultSettings, comments: false, publications: false, metrics: false }),
 );
 assert.throws(() => validateSettings({ ...defaultSettings, maxComments: 10001 }));
+assert.deepEqual(validatePlatformSettings(defaultPlatformSettings), defaultPlatformSettings);
+for (const broken of [
+  { ...defaultPlatformSettings, tiktok: { ...defaultPlatformSettings.tiktok, order: 'random' } },
+  { ...defaultPlatformSettings, telegram: { ...defaultPlatformSettings.telegram, minLength: -1 } },
+  {
+    ...defaultPlatformSettings,
+    telegram: { ...defaultPlatformSettings.telegram, custom: { ...defaultSettings, period: '1' } },
+  },
+])
+  assert.throws(() => validatePlatformSettings(broken));
 
 const origin = process.env.PREVIEW_URL || 'http://127.0.0.1:5186';
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -234,9 +250,54 @@ try {
   await ready();
   assert.equal(await page.evaluate(() => window.sourcesNavigationMarker), true);
   assert.equal(await page.locator('.sp-source-row').count(), 1);
+
+  // «Стыковка»: штекер к ядру, добавление по ссылке, параметры площадки
+  await page.goto(origin + '/sources?layout=dock');
+  await ready();
+  const jack = await page.locator('.dk-jack[data-platform="tiktok"]').boundingBox();
+  const core = await page.locator('.dk-core').boundingBox();
+  await page.mouse.move(jack.x + jack.width / 2, jack.y + jack.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(core.x, core.y, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForFunction(() =>
+    document.querySelector('[aria-label="Настроить TikTok"][aria-pressed="true"]'),
+  );
+  assert.equal(new URL(page.url()).searchParams.get('platform'), 'tiktok');
+  await page.locator('button.dk-step-head', { hasText: 'Источники' }).click();
+  const link = page.getByLabel('Ссылка на источник TikTok', { exact: true });
+  await link.fill('tiktok.com/@qa.daily');
+  assert.match(await page.locator('.dk-format[data-detected="true"]').innerText(), /Профиль/);
+  await page.getByRole('button', { name: 'Добавить', exact: true }).click();
+  await page.getByRole('switch', { name: 'Анализировать @qa.daily', exact: true }).waitFor();
+  await page.locator('button.dk-step-head', { hasText: 'Параметры' }).click();
+  await segment('Параметры TikTok', 'Только TikTok');
+  await segment('Период сбора площадки', '7 дней');
+  await page.getByRole('switch', { name: 'Собирать ответы на комментарии', exact: true }).click();
+  await page.getByRole('button', { name: 'Настроить Telegram', exact: true }).click();
+  await page.waitForFunction(
+    () => new URL(location.href).searchParams.get('platform') === 'telegram',
+  );
+  await page.reload();
+  await ready();
+  const stored = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('e-content-sources-v1')),
+  );
+  assert.equal(stored.platforms.tiktok.custom.period, '7');
+  assert.equal(stored.platforms.tiktok.replies, false);
+  assert.equal(stored.platforms.telegram.custom, null);
+  assert.equal(stored.settings.period, '90');
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.waitForTimeout(150);
+    assert.ok(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      `Dock overflow at ${width}`,
+    );
+  }
   assert.deepEqual(errors, []);
   console.log(
-    'Sources passed: URL validation, duplicate detection, account-unavailable/connected/expired states, scoped account assignment, CSRF requests, unsafe auth redirect rejected, confirmed disconnect, CRUD, selection, settings persistence, cross-tab updates, SPA navigation and 6 responsive widths.',
+    'Sources passed: URL validation, duplicate detection, account-unavailable/connected/expired states, scoped account assignment, CSRF requests, unsafe auth redirect rejected, confirmed disconnect, CRUD, selection, settings persistence, cross-tab updates, SPA navigation, 6 responsive widths, dock drag-to-connect, inline add and per-platform parameters.',
   );
 } finally {
   await browser.close();

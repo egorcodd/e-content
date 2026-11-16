@@ -11,6 +11,8 @@ import {
 import { LabDialog, Segment } from '../../shared/ui';
 import { ConnectorAccount, ConnectorStatus } from './ConnectorAccount';
 import { ConnectorObject } from './ConnectorObject';
+import { DockStage } from './DockStage';
+import { PlatformSteps } from './PlatformSteps';
 import { connectorCatalog, type SourceLayout } from './connector-catalog';
 import type { ConnectedAccount } from './connections';
 import {
@@ -18,14 +20,17 @@ import {
   type AnalysisSource,
   type CollectionSettings,
   type Platform,
+  type PlatformSettings,
 } from './model';
 import './source-layouts.css';
+import './dock.css';
 
 type Props = {
   layout: SourceLayout;
   accounts: ConnectedAccount[];
   sources: AnalysisSource[];
   settings: CollectionSettings;
+  platforms: PlatformSettings;
   platform: string;
   filter: (platform: string) => void;
   loading: boolean;
@@ -34,6 +39,9 @@ type Props = {
   disconnect: (account: ConnectedAccount) => void;
   refresh: () => void;
   add: (platform: Platform) => void;
+  edit: (source: AnalysisSource) => void;
+  remove: (source: AnalysisSource) => void;
+  notify: (text: string) => void;
   browser: ReactNode;
   settingsForm: ReactNode;
   classicConnections: ReactNode;
@@ -124,6 +132,57 @@ export function SourceLayouts(props: Props) {
       )}
     </AnimatePresence>
   );
+
+  if (layout === 'dock')
+    return (
+      <div className="dk-view">
+        <div className="cv-section-line">
+          <h2>Стенд подключения</h2>
+          {refreshButton}
+        </div>
+        <DockStage
+          platform={platform}
+          select={(id) => {
+            filter(id);
+            setStep(0);
+          }}
+          sources={sources}
+          accounts={accounts}
+          loading={loading}
+          unavailable={unavailable}
+        />
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={platform}
+            initial={reduced ? false : { opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: reduced ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}
+          >
+            {platform === 'telegram' || platform === 'tiktok' ? (
+              <PlatformSteps
+                platform={platform}
+                step={step}
+                setStep={setStep}
+                accounts={accounts}
+                loading={loading}
+                unavailable={unavailable}
+                connect={connect}
+                disconnect={disconnect}
+                sources={sources}
+                settings={settings}
+                platforms={props.platforms}
+                edit={props.edit}
+                remove={props.remove}
+                notify={props.notify}
+              />
+            ) : (
+              <div className="cv-browser-slot">{browser}</div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    );
 
   if (layout === 'classic')
     return (

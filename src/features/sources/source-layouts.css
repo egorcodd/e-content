@@ -395,23 +395,50 @@
 .co-tiktok .co-etched-lines i:nth-child(2) {
   width: 17px;
 }
-.cv-module-picker:is(:hover, :focus-visible) .co-sheet-front {
+:is(
+    .cv-module-picker:is(:hover, :focus-visible),
+    .dk-platform:is(:hover, :focus-visible, [aria-pressed='true'])
+  )
+  .co-sheet-front {
   transform: translate(-9px, 2px) rotateY(-18deg) rotateX(9deg) rotateZ(-9deg);
   border-color: #ffffff80;
 }
-.cv-module-picker:is(:hover, :focus-visible) .co-sheet-middle {
+:is(
+    .cv-module-picker:is(:hover, :focus-visible),
+    .dk-platform:is(:hover, :focus-visible, [aria-pressed='true'])
+  )
+  .co-sheet-middle {
   transform: translate(20px, -9px) rotateY(-22deg) rotateX(9deg) rotateZ(-9deg);
 }
-.cv-module-picker:is(:hover, :focus-visible) .co-sheet-back {
+:is(
+    .cv-module-picker:is(:hover, :focus-visible),
+    .dk-platform:is(:hover, :focus-visible, [aria-pressed='true'])
+  )
+  .co-sheet-back {
   transform: translate(46px, -22px) rotateY(-26deg) rotateX(9deg) rotateZ(-9deg);
 }
-.cv-module-picker:is(:hover, :focus-visible) .co-tiktok .co-sheet-front {
+:is(
+    .cv-module-picker:is(:hover, :focus-visible),
+    .dk-platform:is(:hover, :focus-visible, [aria-pressed='true'])
+  )
+  .co-tiktok
+  .co-sheet-front {
   transform: translate(-8px, 2px) rotateY(-12deg) rotateX(7deg) rotateZ(7deg);
 }
-.cv-module-picker:is(:hover, :focus-visible) .co-tiktok .co-sheet-middle {
+:is(
+    .cv-module-picker:is(:hover, :focus-visible),
+    .dk-platform:is(:hover, :focus-visible, [aria-pressed='true'])
+  )
+  .co-tiktok
+  .co-sheet-middle {
   transform: translate(24px, -5px) rotateY(-20deg) rotateX(7deg) rotateZ(8deg);
 }
-.cv-module-picker:is(:hover, :focus-visible) .co-tiktok .co-sheet-back {
+:is(
+    .cv-module-picker:is(:hover, :focus-visible),
+    .dk-platform:is(:hover, :focus-visible, [aria-pressed='true'])
+  )
+  .co-tiktok
+  .co-sheet-back {
   transform: translate(51px, -14px) rotateY(-28deg) rotateX(7deg) rotateZ(9deg);
 }
 
@@ -934,6 +961,7 @@
   .cv-layout-selector .ec-segment {
     width: 100%;
     gap: 0;
+    overflow-x: auto;
   }
   .cv-layout-selector .ec-segment > button {
     flex: 1;

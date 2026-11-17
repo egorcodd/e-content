@@ -11,6 +11,7 @@ export function ParameterRange({
   step = 1,
   disabled = false,
   volumeBudget,
+  showHeading = true,
   format = (value) => value.toLocaleString('ru'),
   onChange,
 }: {
@@ -21,6 +22,7 @@ export function ParameterRange({
   step?: number;
   disabled?: boolean;
   volumeBudget?: number;
+  showHeading?: boolean;
   format?: (value: number) => string;
   onChange: (value: number) => void;
 }) {
@@ -42,10 +44,12 @@ export function ParameterRange({
       data-disabled={disabled}
       style={{ '--range-warning': `${warning}%` } as CSSProperties}
     >
-      <span className="source-range-heading">
-        <span>{label}</span>
-        <output>{format(value)}</output>
-      </span>
+      {showHeading && (
+        <span className="source-range-heading">
+          <span>{label}</span>
+          <output>{format(value)}</output>
+        </span>
+      )}
       <span className="source-range-rail">
         <span className="source-range-ticks" aria-hidden="true">
           {Array.from({ length: 36 }, (_, index) => (

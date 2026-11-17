@@ -168,7 +168,10 @@ export function buildCollectionPlan(
       values.maxPublications,
       config.runLimits.maxPublications,
     );
-    const commentLimit = Math.min(values.maxComments, config.runLimits.maxComments);
+    const commentLimit =
+      source.platform === 'tiktok' && config.platforms.tiktok.commentsPerVideo !== undefined
+        ? config.runLimits.maxComments
+        : Math.min(values.maxComments, config.runLimits.maxComments);
     const comments = values.comments && commentLimit > 0;
     if (
       !publications ||

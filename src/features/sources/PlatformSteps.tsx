@@ -17,6 +17,8 @@ import { SourceSwitch } from './SourceSwitch';
 import { ConnectorStatus } from './ConnectorStatus';
 import './platform-steps.css';
 import type { ConnectedAccount } from './connections';
+import type { TikTokConnectionState } from './tiktok-contracts';
+import { TikTokSelection } from './TikTokConnection';
 import {
   kindNames,
   parseSource,
@@ -284,6 +286,8 @@ export function PlatformSteps({
   remove,
   notify,
   accountPanel,
+  connection,
+  tiktokComments,
 }: {
   platform: Platform;
   step: number;
@@ -294,6 +298,8 @@ export function PlatformSteps({
   remove: (source: AnalysisSource) => void;
   notify: (text: string) => void;
   accountPanel: ReactNode;
+  connection?: TikTokConnectionState;
+  tiktokComments: { enabled: boolean; replies: boolean; runLimit: number };
 }) {
   const reduced = useReducedMotion();
   const own = sources.filter((source) => source.platform === platform);
@@ -302,32 +308,53 @@ export function PlatformSteps({
   const connected = list.find((account) => account.status === 'connected');
   const steps = [
     {
-      title: 'Аккаунт',
-      done: !!connected,
+      title:
+        platform === 'tiktok' && connection?.authentication === 'public' ? 'Профиль' : 'Аккаунт',
+      done: platform === 'tiktok' ? connection?.phase === 'connected' : !!connected,
       summary: (
         <ConnectorStatus
           platform={platform}
           accounts={accounts}
           connectedLabel={connected?.displayName}
+          connection={connection}
         />
       ),
       body: accountPanel,
     },
     {
-      title: 'Источники',
+      title:
+        platform === 'tiktok'
+          ? connection?.transport === 'native'
+            ? 'Ролики для цеха'
+            : 'Ролики'
+          : 'Источники',
       done: own.length > 0,
-      summary: own.length
-        ? `${own.length} ${plural(own.length, 'источник', 'источника', 'источников')} · ${enabled} в сборе`
-        : 'Пусто',
-      body: (
-        <SourcesStep
-          platform={platform}
-          sources={sources}
-          edit={edit}
-          remove={remove}
-          notify={notify}
-        />
-      ),
+      summary:
+        platform === 'tiktok'
+          ? connection?.account
+            ? connection.transport === 'native'
+              ? null
+              : `Последние ${connection.selection.latest}`
+            : 'Не выбраны'
+          : own.length
+            ? `${own.length} ${plural(own.length, 'источник', 'источника', 'источников')} · ${enabled} в сборе`
+            : 'Пусто',
+      body:
+        platform === 'tiktok' ? (
+          <TikTokSelection
+            commentsEnabled={tiktokComments.enabled}
+            includeReplies={tiktokComments.replies}
+            runCommentLimit={tiktokComments.runLimit}
+          />
+        ) : (
+          <SourcesStep
+            platform={platform}
+            sources={sources}
+            edit={edit}
+            remove={remove}
+            notify={notify}
+          />
+        ),
     },
   ];
   return (

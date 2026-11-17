@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/sangzun-han/Tiktok-Api",
+  "revision": "d438d72fa903aa0ecb6f104fa9b915928134fe0a",
+  "license": "MIT",
+  "directory": ".local/tiktok-native/upstream/sangzun-han-Tiktok-Api-d438d72",
+  "transport": "curl_cffi==0.14.0"
+}

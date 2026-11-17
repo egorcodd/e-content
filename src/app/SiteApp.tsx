@@ -44,6 +44,7 @@ export function SiteApp({ page = 'home' }: { page?: SitePage }) {
     [navigate],
   );
   const onReady = useCallback(() => ready(page), [page, ready]);
+  const openAnalytics = useCallback(() => navigate('/analytics?source=tiktok'), [navigate]);
   const openSources = useCallback(
     (platform: 'telegram' | 'tiktok') => navigate(`/sources?platform=${platform}`),
     [navigate],
@@ -83,6 +84,7 @@ export function SiteApp({ page = 'home' }: { page?: SitePage }) {
                 active={page === 'home'}
                 openMaterial={openMaterial}
                 openSources={openSources}
+                openAnalytics={openAnalytics}
               />
             </Suspense>
           </div>

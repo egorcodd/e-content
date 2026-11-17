@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>e-content</title>
+  </head>
+  <body>
+    <header>
+      <img src="icon.svg" width="32" height="32" alt="" /><span
+        >e-content <small id="version"></small
+      ></span>
+    </header>
+    <p id="status" role="status">Проверяем подключение…</p>
+    <form id="pair" novalidate>
+      <label for="code">Код из e-content</label
+      ><input
+        id="code"
+        autocomplete="off"
+        spellcheck="false"
+        maxlength="14"
+        placeholder="XXXX XXXX XXXX"
+      /><button id="submit" type="submit">Подключить Zen</button>
+    </form>
+    <p id="error" role="alert"></p>
+    <div id="connected" hidden>
+      <button id="open" type="button">Открыть цех</button
+      ><button id="forget" type="button" class="secondary">Сменить подключение</button>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

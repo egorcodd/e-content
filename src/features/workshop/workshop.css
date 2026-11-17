@@ -1229,3 +1229,26 @@
   margin-top: 10px;
   font-size: 12px;
 }
+.wg-real-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding: 0 0 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.wg-real-counts b {
+  margin-left: 5px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.wg-real-error {
+  color: #d89b9b;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+.wg-real-error[data-partial='true'] {
+  color: #d2b180;
+}

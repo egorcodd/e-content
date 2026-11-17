@@ -1,142 +1,158 @@
-import { useState, type CSSProperties } from 'react';
+import { useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { TrendPlot } from './TrendPlot';
-import { MetricDelta } from './MetricDelta';
-import { AnimatedNumber, Segment } from '../../shared/ui';
-import { compact, day, fmt, metricLabel, type SeriesId } from './chart-model';
-import { metrics, series, valueAt } from './data';
-import { getWindow, totalFor, type AnalyticsFilters } from './model';
+import { Segment } from '../../shared/ui';
+import { fmt, metricLabel, signedFmt, type Metric } from './chart-model';
+import { measurementDate, publicationDate, tiktokSeries } from './data';
+import { AnalyticsKpis } from './AnalyticsKpis';
+import { metricValue, type AnalyticsFilters } from './model';
+import type { TikTokCounters, TikTokMeasurement } from './contracts';
 
 export function AnalyticsTrend({
   filters,
+  publications,
+  totals,
+  history,
+  followers,
+  emptyLabel,
   onMetric,
 }: {
   filters: AnalyticsFilters;
-  onMetric: (metric: AnalyticsFilters['metric']) => void;
+  publications: TikTokMeasurement[];
+  totals: TikTokCounters;
+  history: TikTokMeasurement[];
+  followers?: number;
+  emptyLabel: string;
+  onMetric: (metric: Metric) => void;
 }) {
   const [style, setStyle] = useState('area');
-  const [hidden, setHidden] = useState<SeriesId[]>(['total']);
   const [table, setTable] = useState(false);
   const reduced = useReducedMotion();
-  const { points, previous } = getWindow(filters.period);
-  const available = series.filter((item) => filters.source === 'all' || item.id === filters.source);
-  const shown = available.filter((item) => !hidden.includes(item.id));
+  const audience = filters.metric === 'followers';
+  const source = audience ? history : publications;
+  const selectMetric = (point: TikTokMeasurement) => {
+    const value = metricValue(point, filters.metric);
+    return value === undefined ? [] : [{ ...point, value }];
+  };
+  const points = source.flatMap(selectMetric);
+  const measurements = audience ? [] : history.flatMap(selectMetric);
+  const label = metricLabel(filters.metric, 'tiktok');
+  const singleMeasurement = audience && points.length === 1;
   return (
-    <section className="ap-trend ag-card ec-glow" aria-label="Динамика показателей">
-      <div className="ap-kpis" role="group" aria-label="Показатель аналитики">
-        {metrics.map((metric) => {
-          const now = totalFor(points, metric.id, filters.source);
-          const before = totalFor(previous, metric.id, filters.source);
-          return (
-            <button
-              key={metric.id}
-              aria-pressed={filters.metric === metric.id}
-              onClick={() => onMetric(metric.id)}
-            >
-              <span
-                title={
-                  metric.id === 'followers' && filters.source === 'all'
-                    ? 'Сумма подписок на площадках. Один человек может подписываться на обе.'
-                    : undefined
-                }
-              >
-                {metricLabel(metric.id, filters.source)}
-              </span>
-              <AnimatedNumber value={now} className="ap-kpi-value" duration={0.5} />
-              <MetricDelta
-                value={before ? ((now - before) / before) * 100 : 0}
-                suffix={`к прошлым ${filters.period} дням`}
-              />
-            </button>
-          );
-        })}
-      </div>
+    <section className="ap-trend ag-card ec-glow" aria-label="Показатели TikTok">
+      <AnalyticsKpis
+        filters={filters}
+        onMetric={onMetric}
+        valueOf={(metric) =>
+          metric === 'followers' ? followers : totals[metric === 'reactions' ? 'likes' : metric]
+        }
+      />
       <div className="ap-trend-body">
-        <div className="ag-chart-toolbar">
-          <div className="ag-chart-legend" role="group" aria-label="Ряды графика">
-            {available.map((item) => (
+        {points.length > 0 && (
+          <div className="ag-chart-toolbar">
+            <div className="ag-chart-legend">
+              <span className="ag-swatch ap-tiktok-swatch" />
+              <span>TikTok</span>
+              <span className="ap-chart-scope">
+                {audience ? 'Замеры подписчиков' : 'Накопленные счётчики по датам публикаций'}
+              </span>
+            </div>
+            <div className="ag-chart-tools">
+              <Segment
+                label="Вид графика"
+                size="sm"
+                value={style}
+                onChange={setStyle}
+                values={[
+                  { id: 'area', label: 'Области' },
+                  { id: 'line', label: 'Линии' },
+                ]}
+              />
               <button
-                key={item.id}
-                aria-pressed={!hidden.includes(item.id)}
-                onClick={() =>
-                  setHidden((old) =>
-                    old.includes(item.id) ? old.filter((id) => id !== item.id) : [...old, item.id],
-                  )
-                }
+                className="ag-table-toggle"
+                aria-pressed={table}
+                onClick={() => setTable(!table)}
               >
-                <span
-                  className={`ag-swatch ${item.dash ? 'is-dashed' : ''}`}
-                  style={{ '--c': item.color } as CSSProperties}
-                />
-                {item.label}
-                <strong>{compact(valueAt(points.at(-1)!, item.id, filters.metric))}</strong>
+                {table ? 'График' : 'Данные'}
               </button>
-            ))}
+            </div>
           </div>
-          <div className="ag-chart-tools">
-            <Segment
-              label="Вид графика"
-              size="sm"
-              value={style}
-              onChange={setStyle}
-              values={[
-                { id: 'area', label: 'Области' },
-                { id: 'line', label: 'Линии' },
-              ]}
-            />
-            <button
-              className="ag-table-toggle"
-              aria-pressed={table}
-              onClick={() => setTable(!table)}
-            >
-              {table ? 'График' : 'Данные'}
-            </button>
-          </div>
-        </div>
+        )}
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
-            key={table ? 'table' : shown.length ? 'plot' : 'empty'}
+            key={!points.length ? 'empty' : table ? 'table' : singleMeasurement ? 'first' : 'plot'}
             initial={reduced ? false : { opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: reduced ? 0 : 0.16 }}
           >
-            {table ? (
+            {!points.length ? (
+              <div className="ag-chart-empty" role="status">
+                {source.length ? 'За этот период показателя нет' : emptyLabel}
+              </div>
+            ) : table ? (
               <div className="ag-data-scroll">
                 <table>
-                  <caption className="sr-only">
-                    {metricLabel(filters.metric, filters.source)} по дням
-                  </caption>
                   <thead>
                     <tr>
-                      <th>Дата</th>
-                      {available.map((item) => (
-                        <th key={item.id}>{item.label}</th>
-                      ))}
+                      <th>{audience ? 'Время замера' : 'Дата публикации'}</th>
+                      {!audience && <th>Ролики</th>}
+                      <th>{label}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {points.map((point) => (
-                      <tr key={point.date}>
-                        <td>{day(point.date)}</td>
-                        {available.map((item) => (
-                          <td key={item.id}>{fmt(valueAt(point, item.id, filters.metric))}</td>
-                        ))}
+                      <tr key={point.id}>
+                        <td>
+                          {audience ? measurementDate(point.date) : publicationDate(point.date)}
+                        </td>
+                        {!audience && <td>{fmt(point.videos)}</td>}
+                        <td>{fmt(point.value)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {measurements.length > 1 && (
+                  <details className="ap-measurement-details">
+                    <summary>Замеры счётчиков</summary>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Время замера</th>
+                          <th>{label}</th>
+                          <th>К прошлому замеру</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {measurements.map((point, index) => (
+                          <tr key={point.id}>
+                            <td>{measurementDate(point.date)}</td>
+                            <td>{fmt(point.value)}</td>
+                            <td>
+                              {index ? signedFmt(point.value - measurements[index - 1].value) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </details>
+                )}
               </div>
-            ) : shown.length ? (
+            ) : singleMeasurement ? (
+              <div className="ag-chart-empty" role="status">
+                График подписчиков появится после второго замера.
+              </div>
+            ) : (
               <TrendPlot
-                key={`${filters.period}-${filters.source}`}
+                key={`${filters.period}-${filters.source}-${filters.metric}`}
                 points={points}
                 metric={filters.metric}
-                shown={shown}
+                label={audience ? label : `${label} по датам публикаций`}
+                shown={tiktokSeries}
                 area={style === 'area'}
+                readValue={(point) => point.value}
+                observations={audience}
               />
-            ) : (
-              <div className="ag-chart-empty">Выберите ряд на легенде</div>
             )}
           </motion.div>
         </AnimatePresence>

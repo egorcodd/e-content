@@ -9,6 +9,7 @@ import {
 import { AnimatedNumber, Reveal, SectionHeading, Segment, StatusIcon } from '../shared/ui';
 import { TrendPlot } from '../features/analytics/TrendPlot';
 import { MetricDelta as Delta } from '../features/analytics/MetricDelta';
+import { analyticsPeriods, type AnalyticsPeriod } from '../features/analytics/model';
 import {
   fmt,
   compact,
@@ -20,24 +21,21 @@ import {
   type Platform,
   type SeriesId,
 } from '../features/analytics/chart-model';
-import {
-  samples,
-  series,
-  coreMetrics as metrics,
-  valueAt,
-  summary,
-} from '../features/analytics/data';
+import { series, coreMetrics as metrics, valueAt, summary } from '../features/analytics/data';
+import { samples } from './analytics-samples';
 import './analytics-gallery.css';
 
 function TrendChart() {
-  const [period, setPeriod] = useState('30');
+  const [period, setPeriod] = useState<AnalyticsPeriod>('30');
   const [metric, setMetric] = useState<Metric>('views');
   const [style, setStyle] = useState('area');
   const [visible, setVisible] = useState<SeriesId[]>(['telegram', 'tiktok']);
   const [dataView, setDataView] = useState(false);
-  const days = Number(period);
-  const points = useMemo(() => samples.slice(-days), [days]);
-  const previous = useMemo(() => samples.slice(-days * 2, -days), [days]);
+  const { points, previous } = useMemo(() => {
+    if (period === 'all') return { points: samples, previous: [] };
+    const days = Number(period);
+    return { points: samples.slice(-days), previous: samples.slice(-days * 2, -days) };
+  }, [period]);
   const shown = series.filter((item) => visible.includes(item.id));
   const last = points.at(-1)!;
   return (
@@ -51,18 +49,14 @@ function TrendChart() {
           label="Период графика"
           size="sm"
           value={period}
-          onChange={setPeriod}
-          values={[
-            { id: '7', label: '7 дней' },
-            { id: '30', label: '30 дней' },
-            { id: '90', label: '90 дней' },
-          ]}
+          onChange={(value) => setPeriod(value as AnalyticsPeriod)}
+          values={analyticsPeriods}
         />
       </div>
       <div className="ag-kpis" role="group" aria-label="Показатель графика">
         {metrics.map((item) => {
           const now = summary(points, item.id);
-          const before = summary(previous, item.id);
+          const before = previous.length ? summary(previous, item.id) : null;
           return (
             <button
               type="button"
@@ -72,7 +66,12 @@ function TrendChart() {
             >
               <span className="ag-kpi-label">{item.label}</span>
               <AnimatedNumber value={now} className="ag-kpi-value" />
-              <Delta value={((now - before) / before) * 100} suffix={`к прошлым ${days} дням`} />
+              {before !== null && (
+                <Delta
+                  value={before ? ((now - before) / before) * 100 : 0}
+                  suffix={`к прошлым ${period} дням`}
+                />
+              )}
             </button>
           );
         })}
@@ -144,7 +143,13 @@ function TrendChart() {
           </table>
         </div>
       ) : shown.length ? (
-        <TrendPlot points={points} shown={shown} metric={metric} area={style === 'area'} />
+        <TrendPlot
+          points={points}
+          shown={shown}
+          metric={metric}
+          area={style === 'area'}
+          readValue={(point, id) => valueAt(point, id, metric)}
+        />
       ) : (
         <div className="ag-chart-empty">Выберите ряд на легенде</div>
       )}

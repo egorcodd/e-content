@@ -1,57 +1,80 @@
 import { AnimatedNumber } from '../../shared/ui';
 import { fmt, signedFmt } from './chart-model';
-import { series } from './data';
+import type { TikTokMeasurement } from './contracts';
+import { tiktokSeries } from './data';
 import { MetricDelta } from './MetricDelta';
-import { audienceGrowth, type AnalyticsFilters } from './model';
+import type { AnalyticsPeriod } from './model';
 import { TrendPlot } from './TrendPlot';
 
-export function AudienceGrowth({ filters }: { filters: AnalyticsFilters }) {
-  const { start, end, change, percent, points } = audienceGrowth(filters);
-  const shown = series.filter(
-    (item) => item.id !== 'total' && (filters.source === 'all' || item.id === filters.source),
+export function AudienceGrowth({
+  history,
+  period,
+}: {
+  history: TikTokMeasurement[];
+  period: AnalyticsPeriod;
+}) {
+  const points = history.flatMap(({ date, followers }) =>
+    followers === undefined ? [] : [{ date, followers }],
   );
+  const first = points[0];
+  const last = points.at(-1);
   return (
     <section className="ag-card ec-glow ap-growth" aria-labelledby="growth-heading">
       <div className="ap-card-heading">
         <h2 id="growth-heading">Рост аудитории</h2>
-        <span>за {filters.period} дней</span>
+        <span>{period === 'all' ? 'за всё время' : `за ${period} дней`}</span>
       </div>
-      <div className="ap-growth-summary">
-        <strong className="ap-growth-change" data-growth-change={change}>
-          {change > 0 && <span>+</span>}
-          <AnimatedNumber value={change} duration={0.5} />
-        </strong>
-        {percent !== null && <MetricDelta value={percent} suffix="за период" />}
-      </div>
-      <dl className="ap-growth-range">
-        <div>
-          <dt>На начало</dt>
-          <dd data-growth-start={start}>{fmt(start)}</dd>
+      {!first || !last ? (
+        <p className="ap-insight-empty">Нет замеров подписчиков за этот период.</p>
+      ) : points.length === 1 ? (
+        <div className="ap-growth-summary">
+          <strong className="ap-growth-change">{fmt(first.followers)}</strong>
+          <span className="ap-insight-empty">Для графика роста нужен второй сбор.</span>
         </div>
-        <div>
-          <dt>На конец</dt>
-          <dd data-growth-end={end}>{fmt(end)}</dd>
-        </div>
-      </dl>
-      <div className="ap-growth-legend">
-        {shown.map((item) => (
-          <span key={item.id}>
-            <i style={{ background: item.color }} />
-            {item.label}
-          </span>
-        ))}
-        <span className="ap-growth-caption">Прирост с начала периода</span>
-      </div>
-      <TrendPlot
-        key={`${filters.source}-${filters.period}`}
-        points={points}
-        shown={shown}
-        metric="followers"
-        area
-        label="Прирост подписчиков с начала периода"
-        formatValue={signedFmt}
-        dataTableAvailable={false}
-      />
+      ) : (
+        <>
+          <div className="ap-growth-summary">
+            <strong
+              className="ap-growth-change"
+              data-growth-change={last.followers - first.followers}
+            >
+              <AnimatedNumber
+                value={last.followers - first.followers}
+                format={signedFmt}
+                duration={0.5}
+              />
+            </strong>
+            {first.followers > 0 && (
+              <MetricDelta
+                value={((last.followers - first.followers) / first.followers) * 100}
+                suffix="за период"
+              />
+            )}
+          </div>
+          <dl className="ap-growth-range">
+            <div>
+              <dt>Первый замер</dt>
+              <dd>{fmt(first.followers)}</dd>
+            </div>
+            <div>
+              <dt>Последний замер</dt>
+              <dd>{fmt(last.followers)}</dd>
+            </div>
+          </dl>
+          <TrendPlot
+            key={period}
+            points={points}
+            shown={tiktokSeries}
+            metric="followers"
+            area
+            label="Изменение числа подписчиков"
+            formatValue={signedFmt}
+            readValue={(point) => point.followers - first.followers}
+            observations
+            dataTableAvailable={false}
+          />
+        </>
+      )}
     </section>
   );
 }

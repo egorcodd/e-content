@@ -15,6 +15,20 @@ import {
 import { migrateConfiguration, validateConfiguration } from './collection-policy';
 
 const key = 'e-content-sources-v1';
+let managedSources: AnalysisSource[] = [];
+function withManaged(config: SourceConfiguration): SourceConfiguration {
+  return managedSources.length
+    ? {
+        ...config,
+        sources: [
+          ...config.sources.filter(
+            (source) => source.platform !== 'tiktok' || source.purpose !== 'own',
+          ),
+          ...managedSources,
+        ],
+      }
+    : config;
+}
 const empty: SourceConfiguration = {
   schemaVersion: 2,
   runLimits: { ...defaultRunLimits },
@@ -27,8 +41,8 @@ const listeners = new Set<() => void>();
 function read(): SourceConfiguration {
   try {
     const stored = JSON.parse(localStorage.getItem(key) ?? 'null');
-    if (!stored) return empty;
-    if (!Array.isArray(stored.sources) || stored.sources.length > 200) return empty;
+    if (!stored) return withManaged(empty);
+    if (!Array.isArray(stored.sources) || stored.sources.length > 200) return withManaged(empty);
     const sources = stored.sources.filter((item: AnalysisSource) => {
       try {
         return (
@@ -48,12 +62,12 @@ function read(): SourceConfiguration {
       }
     });
     try {
-      return migrateConfiguration({ ...stored, sources });
+      return withManaged(migrateConfiguration({ ...stored, sources }));
     } catch {
-      return { ...structuredClone(empty), sources };
+      return withManaged({ ...structuredClone(empty), sources });
     }
   } catch {
-    return empty;
+    return withManaged(empty);
   }
 }
 snapshot = read();
@@ -66,11 +80,38 @@ window.addEventListener('storage', (event) => {
 function write(next: SourceConfiguration) {
   const valid = validateConfiguration(next);
   try {
-    localStorage.setItem(key, JSON.stringify(valid));
+    const previous = JSON.parse(localStorage.getItem(key) ?? 'null');
+    const hidden =
+      managedSources.length && Array.isArray(previous?.sources)
+        ? previous.sources.filter(
+            (source: AnalysisSource) =>
+              source.platform === 'tiktok' &&
+              source.purpose === 'own' &&
+              !valid.sources.some((item) => item.id === source.id),
+          )
+        : [];
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        ...valid,
+        sources: [
+          ...valid.sources.filter(
+            (source) => !managedSources.some((item) => item.id === source.id),
+          ),
+          ...hidden,
+        ],
+      }),
+    );
   } catch {
     throw new Error('Не удалось сохранить настройки. Проверьте свободное место в браузере.');
   }
-  snapshot = valid;
+  snapshot = withManaged(valid);
+  listeners.forEach((listener) => listener());
+}
+export function updateManagedSources(sources: AnalysisSource[]) {
+  if (JSON.stringify(managedSources) === JSON.stringify(sources)) return;
+  managedSources = sources;
+  snapshot = read();
   listeners.forEach((listener) => listener());
 }
 export function useSources() {

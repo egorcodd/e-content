@@ -8,12 +8,14 @@ export function HomePage({
   active = true,
   openMaterial,
   openSources,
+  openAnalytics,
 }: {
   notify: (text: string) => void;
   onReady?: () => void;
   active?: boolean;
   openMaterial?: (id: string) => void;
   openSources?: (platform: 'telegram' | 'tiktok') => void;
+  openAnalytics?: () => void;
 }) {
   return (
     <div className="home-page">
@@ -24,6 +26,7 @@ export function HomePage({
         enabled={active}
         openMaterial={openMaterial}
         openSources={openSources}
+        openAnalytics={openAnalytics}
       />
     </div>
   );

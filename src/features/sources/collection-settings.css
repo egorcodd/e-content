@@ -29,6 +29,9 @@
   flex-shrink: 0;
   font-size: 12px;
 }
+.platform-settings-heading > .platform-setting-reset {
+  align-self: flex-start;
+}
 .platform-setting-label {
   display: flex;
   align-items: center;
@@ -104,6 +107,9 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   line-height: 1.5;
+}
+.platform-limits[data-single='true'] {
+  grid-template-columns: minmax(0, 1fr);
 }
 .platform-limits .source-range-heading output {
   font-size: 13px;

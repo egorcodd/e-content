@@ -1,4 +1,5 @@
-import type { Platform } from './model';
+import type { Platform, AnalysisSource } from './model';
+import type { TikTokConnectionState } from './tiktok-contracts';
 
 export type ConnectedAccount = {
   id: string;
@@ -11,6 +12,26 @@ export type ConnectionState = {
   accounts: ConnectedAccount[];
   available: Platform[];
   csrfToken: string;
+  publicReaders?: { tiktok?: PublicReaderStatus };
+  tiktok?: TikTokConnectionState;
+  managedSources?: AnalysisSource[];
+};
+export type PublicReaderStatus = {
+  mode: 'account';
+  status:
+    | 'unverified'
+    | 'reading'
+    | 'completed'
+    | 'limited'
+    | 'login_required'
+    | 'confirmation_required'
+    | 'blocked'
+    | 'failed'
+    | 'cancelled'
+    | 'interrupted';
+  message?: string;
+  lastCheckedAt?: string;
+  sourceUrl?: string;
 };
 export class ConnectionUnavailable extends Error {
   constructor() {
@@ -69,26 +90,8 @@ export async function readConnections(): Promise<ConnectionState> {
     accounts: result.accounts,
     available: result.available.filter((item) => ['telegram', 'tiktok'].includes(item)),
     csrfToken: result.csrfToken,
+    publicReaders: result.publicReaders,
+    tiktok: result.tiktok,
+    managedSources: result.managedSources,
   };
-}
-export async function beginConnection(platform: Platform, csrfToken: string) {
-  const result = (await request('/authorize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-    body: JSON.stringify({ platform, returnTo: '/sources' }),
-  })) as { url?: string };
-  const url = new URL(result?.url ?? '', location.origin);
-  if (
-    !result?.url ||
-    url.origin !== location.origin ||
-    !url.pathname.startsWith('/api/connections/authorize/')
-  )
-    throw new Error('Сервис не выдал адрес авторизации.');
-  return url.href;
-}
-export async function disconnectAccount(id: string, csrfToken: string) {
-  await request(`/accounts/${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-    headers: { 'X-CSRF-Token': csrfToken },
-  });
 }

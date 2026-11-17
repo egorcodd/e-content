@@ -9,6 +9,9 @@ const browser = await chromium.launch(
     : { channel: 'msedge', headless: true },
 );
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+await page.route('**/api/collection/latest', (route) =>
+  route.fulfill({ contentType: 'application/json', body: JSON.stringify({ run: null }) }),
+);
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 const rail = page.locator('.app-sidebar');
@@ -75,16 +78,14 @@ try {
   await page.keyboard.press('Escape');
   await page.locator('.wg-process-panel').waitFor({ state: 'detached' });
   await page.getByRole('button', { name: 'Запустить весь цикл', exact: true }).click();
-  await page.locator('.wg-process-panel').waitFor();
-  await assertPanelAccessible();
   await page
-    .locator('.wg-process-panel')
-    .getByRole('button', { name: 'Остановить цикл', exact: true })
-    .click();
-  await page.getByRole('button', { name: 'Закрыть процесс', exact: true }).click();
-  await page.locator('.wg-process-panel').waitFor({ state: 'detached' });
-  await page.waitForTimeout(1100);
-  assert.equal(await page.locator('.wg-active').count(), 0);
+    .getByText('Выберите хотя бы один источник Telegram или TikTok.', { exact: true })
+    .waitFor();
+  assert.equal(
+    await page.locator('.wg-active').count(),
+    0,
+    'No visual success without configured sources',
+  );
 
   for (const width of [1920, 1440, 1024, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -131,7 +132,7 @@ try {
   assert.equal(new URL(page.url()).pathname, '/design-system');
   assert.deepEqual(errors, []);
   console.log(
-    'Home checks passed: fullscreen workshop, hover/keyboard/touch sidebar, stable scene layout, accessible process panel, cycle cancellation, responsive widths, reduced motion, separate design system and legacy links.',
+    'Home checks passed: fullscreen workshop, hover/keyboard/touch sidebar, stable scene layout, accessible process panel, missing-source validation, responsive widths, reduced motion, separate design system and legacy links.',
   );
 } finally {
   await browser.close();

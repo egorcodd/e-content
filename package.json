@@ -5,12 +5,16 @@
   "type": "module",
   "workspaces": [],
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5186",
-    "build": "tsc --noEmit && vite build",
+    "dev": "node scripts/dev.mjs",
+    "build": "tsc --noEmit && tsc -p server/tsconfig.json && vite build",
+    "server": "node --import tsx server/index.ts",
+    "setup:tiktok": "node scripts/setup-tiktok.mjs",
+    "check:tiktok-native-ui": "node --import tsx scripts/check-tiktok-native-ui.mjs",
+    "check:tiktok-native-live": "node --import tsx scripts/check-tiktok-native-live.mjs --live",
     "preview": "vite preview --host 127.0.0.1 --port 5186",
     "check:ui": "node scripts/check-lab.mjs",
     "check:home": "node scripts/check-home.mjs",
-    "check:analytics": "node scripts/check-analytics.mjs",
+    "check:analytics": "node --import tsx scripts/check-analytics.mjs",
     "check:navigation": "node scripts/check-navigation.mjs",
     "check:scenarios": "node scripts/check-scenarios.mjs",
     "check:library": "node scripts/check-library.mjs",
@@ -24,9 +28,14 @@
     "check:source-layout": "node scripts/check-source-layout.mjs",
     "check:range-colors": "node scripts/check-range-colors.mjs",
     "check:collection-policy": "node scripts/check-collection-policy.mjs",
+    "check:server": "node --import tsx --test server/tests/*.test.ts",
+    "check:telegram-workshop": "node --import tsx scripts/check-telegram-workshop.mjs",
+    "check:tiktok-workshop": "node --import tsx scripts/check-tiktok-workshop.mjs",
+    "check:zen": "node --import tsx scripts/check-zen-extension.mjs",
+    "check:zen-ui": "node --import tsx scripts/check-zen-ui.mjs",
     "check:refinements": "node scripts/check-refinements.mjs",
-    "format": "prettier --write src scripts index.html vite.config.ts *.json README.md",
-    "format:check": "prettier --check src scripts index.html vite.config.ts *.json README.md"
+    "format": "prettier --write src server scripts index.html vite.config.ts *.json README.md",
+    "format:check": "prettier --check src server scripts index.html vite.config.ts *.json README.md"
   },
   "dependencies": {
     "@fontsource-variable/golos-text": "5.3.0",
@@ -34,9 +43,12 @@
     "@phosphor-icons/react": "2.1.10",
     "@react-three/drei": "10.7.9",
     "@react-three/fiber": "9.8.2",
+    "big-integer": "1.6.52",
     "motion": "14.14.0",
+    "playwright": "1.65.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "teleproto": "1.233.0",
     "three": "0.187.0"
   },
   "devDependencies": {
@@ -45,8 +57,8 @@
     "@types/react-dom": "19.3.0",
     "@types/three": "0.187.0",
     "@vitejs/plugin-react": "6.3.0",
-    "playwright": "1.65.1",
     "prettier": "3.10.1",
+    "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "8.3.8"
   }

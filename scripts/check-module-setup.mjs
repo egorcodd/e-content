@@ -1,8 +1,10 @@
+import { telegramFixture, enterApplication } from './support/telegram-api.mjs';
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } });
+const fixture = await telegramFixture(page);
 const origin = process.env.PREVIEW_URL || 'http://127.0.0.1:5186';
 const errors = [],
   authorizationRequests = [];
@@ -46,27 +48,16 @@ try {
   assert.ok((await parameters.boundingBox()).height <= 530, 'Primary parameters must stay compact');
   const common = page.getByRole('region', { name: 'Общие настройки', exact: true });
   assert.equal(await common.getByRole('slider').count(), 0, 'Shared parameters start collapsed');
+  await enterApplication(page);
   await page.getByRole('button', { name: 'Получить код', exact: true }).click();
-  await page.getByLabel('Код подтверждения примера', { exact: true }).fill('111111');
+  await page.getByLabel('Код Telegram', { exact: true }).fill('99999');
   await page.getByRole('button', { name: 'Подтвердить вход', exact: true }).click();
-  await page
-    .getByRole('alert')
-    .getByText('Неверный код. Проверьте и попробуйте ещё раз.', { exact: true })
-    .waitFor();
+  await page.getByText('Неверный код подтверждения.', { exact: true }).waitFor();
   await choose('TikTok');
-  assert.equal(await page.locator('.pc-form .pc-title > svg').count(), 0);
-  await page.getByRole('button', { name: 'Продолжить', exact: true }).click();
-  await page.getByRole('button', { name: 'Подтвердить вход', exact: true }).click();
-  await page.getByRole('button', { name: 'Подключить аккаунт', exact: true }).click();
-  await page.getByRole('heading', { name: 'TikTok подключён', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Вход в TikTok', exact: true }).waitFor();
   await choose('Telegram');
-  assert.equal(
-    await page.getByLabel('Код подтверждения примера', { exact: true }).inputValue(),
-    '111111',
-  );
-  await page.getByLabel('Код подтверждения примера', { exact: true }).fill('123456');
+  await page.getByLabel('Код Telegram', { exact: true }).fill('12345');
   await page.getByRole('button', { name: 'Подтвердить вход', exact: true }).click();
-  await page.getByRole('button', { name: 'Подключить аккаунт', exact: true }).click();
   await page.getByRole('heading', { name: 'Telegram подключён', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Выбрать источники', exact: true }).click();
   await page.getByLabel('Ссылка на источник Telegram', { exact: true }).fill('t.me/qualityqa');
@@ -185,8 +176,12 @@ try {
   await page.setViewportSize({ width: 1600, height: 1100 });
   fs.mkdirSync('.qa/module-setup', { recursive: true });
   await page.screenshot({ path: '.qa/module-setup/verified.png', fullPage: true });
-  assert.deepEqual(authorizationRequests, [], 'Preview must never call real account mutations');
-  await page.getByRole('button', { name: 'Отключить пример', exact: true }).click();
+  assert.equal(
+    fixture.requests.filter((request) => request.path === '/api/telegram/code').length,
+    1,
+  );
+  await page.getByRole('button', { name: 'Отключить', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Отключить', exact: true }).click();
   await page.getByRole('button', { name: 'Получить код', exact: true }).waitFor();
   assert.equal(
     await page.getByRole('switch', { name: 'Анализировать qualityqa', exact: true }).count(),
@@ -197,6 +192,7 @@ try {
     reducedMotion: 'reduce',
     viewport: { width: 390, height: 950 },
   });
+  await telegramFixture(reduced);
   await reduced.goto(origin + '/sources?layout=modules&platform=tiktok');
   await reduced.locator('.app-loader').waitFor({ state: 'detached' });
   await reduced.getByRole('heading', { name: 'Вход в TikTok', exact: true }).waitFor();
@@ -204,7 +200,7 @@ try {
   await reduced.close();
   assert.deepEqual(errors, []);
   console.log(
-    'Module setup passed: inline mock login for both platforms, wrong-code handling, retained progress, no real auth mutations or persisted mock accounts, source selection, zero slider limits, isolated platform settings, disclosure, reduced motion and 5 widths.',
+    'Module setup passed: real API contract with intercepted test responses, dynamic Telegram login, source selection, isolated settings, disclosure, reduced motion and 5 widths.',
   );
 } finally {
   await browser.close();

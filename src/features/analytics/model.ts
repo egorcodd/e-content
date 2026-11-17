@@ -1,89 +1,105 @@
-import { metrics, samples, valueAt } from './data';
-import type { Metric, Platform, Point } from './chart-model';
+import { metrics } from './data';
+import type { Metric, Platform } from './chart-model';
+import type { CatalogVideo, TikTokMeasurement } from './contracts';
+import { sumCounters } from './counters';
 
-export type AnalyticsPeriod = '7' | '30' | '90';
+export type AnalyticsPeriod = '7' | '30' | 'all';
+export const analyticsPeriods: { id: AnalyticsPeriod; label: string }[] = [
+  { id: '7', label: '7 дней' },
+  { id: '30', label: '30 дней' },
+  { id: 'all', label: 'За всё время' },
+];
 export type AnalyticsSource = 'all' | Platform;
-export type AnalyticsFilters = { period: AnalyticsPeriod; source: AnalyticsSource; metric: Metric };
-export function getWindow(period: AnalyticsPeriod) {
-  const days = Number(period);
-  return { points: samples.slice(-days), previous: samples.slice(-days * 2, -days) };
+export type AnalyticsFilters = {
+  period: AnalyticsPeriod;
+  source: AnalyticsSource;
+  metric: Metric;
+};
+
+export function getWindow<T extends { date: string }>(
+  history: T[],
+  period: AnalyticsPeriod,
+  now = Date.now(),
+) {
+  if (period === 'all') return history;
+  const today = new Date(now + 3 * 3600000).toISOString().slice(0, 10);
+  const since = Date.parse(today + 'T00:00:00+03:00') - (Number(period) - 1) * 86400000;
+  return history.filter((point) => Date.parse(point.date) >= since);
 }
-export function totalFor(points: Point[], metric: Metric, source: AnalyticsSource) {
-  const id = source === 'all' ? 'total' : source;
-  return metric === 'followers'
-    ? valueAt(points.at(-1)!, id, metric)
-    : points.reduce((total, point) => total + valueAt(point, id, metric), 0);
+
+export function metricValue(point: TikTokMeasurement, metric: Metric) {
+  if (metric === 'followers') return point.followers;
+  return point.counters[metric === 'reactions' ? 'likes' : metric];
 }
+
+export function publicationPoints(videos: CatalogVideo[]): TikTokMeasurement[] {
+  const byDate = new Map<string, CatalogVideo[]>();
+  for (const video of videos) {
+    const date = new Date(Date.parse(video.date) + 3 * 3600000).toISOString().slice(0, 10);
+    const existing = byDate.get(date);
+    if (existing) existing.push(video);
+    else byDate.set(date, [video]);
+  }
+  return [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, group]) => ({
+      id,
+      date: id + 'T00:00:00+03:00',
+      videos: group.length,
+      counters: sumCounters(group),
+    }));
+}
+
 export function readFilters(search: string): AnalyticsFilters {
   const params = new URLSearchParams(search);
   const period = params.get('period');
   const source = params.get('source');
-  const metric = params.get('metric');
+  const metric = metrics.find((item) => item.id === params.get('metric'))?.id ?? 'views';
   return {
-    period: period === '7' || period === '90' ? period : '30',
+    period: period === '7' || period === '30' ? period : 'all',
     source: source === 'telegram' || source === 'tiktok' ? source : 'all',
-    metric: metrics.find((item) => item.id === metric)?.id ?? 'views',
+    metric,
   };
 }
-export function analyticsCsv({ period, source }: AnalyticsFilters) {
-  const { points, previous } = getWindow(period);
-  const platforms: Platform[] = source === 'all' ? ['telegram', 'tiktok'] : [source];
+
+export function catalogCsv(videos: CatalogVideo[]) {
   return (
     '\uFEFF' +
     [
-      [
-        'Дата',
-        'Площадка',
-        'Подписчики',
-        'Просмотры',
-        'Комментарии',
-        'Реакции / лайки',
-        'Репосты',
-        'Прирост подписчиков',
-      ].join(';'),
-      ...points.flatMap((point, index) =>
-        platforms.map((platform) =>
-          [
-            point.date.slice(0, 10),
-            platform === 'telegram' ? 'Telegram' : 'TikTok',
-            point[platform].followers,
-            point[platform].views,
-            point[platform].comments,
-            point[platform].reactions,
-            point[platform].shares,
-            point[platform].followers - (points[index - 1] ?? previous.at(-1)!)[platform].followers,
-          ].join(';'),
-        ),
-      ),
+      'Дата публикации (UTC);Название;Просмотры;Комментарии;Лайки;Репосты;Ссылка',
+      ...videos.map(({ date, title, counters, url }) => {
+        const safeTitle = /^[\s]*[=+@-]|^[\t\r\n]/u.test(title) ? "'" + title : title;
+        return [
+          date,
+          '"' + safeTitle.replaceAll('"', '""') + '"',
+          counters.views,
+          counters.comments,
+          counters.likes,
+          counters.shares,
+          url,
+        ].join(';');
+      }),
     ].join('\r\n')
   );
 }
 
-export function audienceGrowth({ period, source }: AnalyticsFilters) {
-  const { points, previous } = getWindow(period);
-  const baseline = previous.at(-1)!;
-  const start = totalFor([baseline], 'followers', source);
-  const end = totalFor(points, 'followers', source);
-  return {
-    start,
-    end,
-    change: end - start,
-    percent: start ? ((end - start) / start) * 100 : null,
-    points: points.map((point) => ({
-      ...point,
-      telegram: {
-        ...point.telegram,
-        followers: point.telegram.followers - baseline.telegram.followers,
-      },
-      tiktok: { ...point.tiktok, followers: point.tiktok.followers - baseline.tiktok.followers },
-    })),
-    days: points.map((point, index) => {
-      const before = points[index - 1] ?? baseline;
-      return {
-        date: point.date,
-        telegram: point.telegram.followers - before.telegram.followers,
-        tiktok: point.tiktok.followers - before.tiktok.followers,
-      };
-    }),
-  };
+export function analyticsCsv(points: TikTokMeasurement[]) {
+  return (
+    '\uFEFF' +
+    [
+      'Время сбора (UTC);Площадка;Ролики со счётчиками;Подписчики;Просмотры;Комментарии;Лайки;Репосты',
+      ...points.map(({ date, videos, counters, followers }) =>
+        [
+          date,
+          'TikTok',
+          videos,
+          followers,
+          counters.views,
+          counters.comments,
+          counters.likes,
+          counters.shares,
+        ].join(';'),
+      ),
+    ].join('\r\n')
+  );
 }

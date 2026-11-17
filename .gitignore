@@ -5,3 +5,7 @@ dist/
 .env
 .env.*
 !.env.example
+.local/
+__pycache__/
+*.session
+*.session-journal

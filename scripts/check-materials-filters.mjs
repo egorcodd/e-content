@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1050 } });
+await page.route('**/api/collection/latest', (route) => route.fulfill({ json: { run: null } }));
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 const select = async (label, option) => {
@@ -45,7 +46,7 @@ try {
   });
   const expected = await page.evaluate(async (title) => {
     const records = await new Promise((resolve, reject) => {
-      const request = indexedDB.open('e-content-library', 3);
+      const request = indexedDB.open('e-content-library');
       request.onsuccess = () => {
         const db = request.result;
         const get = db.transaction('materials').objectStore('materials').getAll();

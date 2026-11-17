@@ -1,5 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { ideaDetails, folderFormat, formatFolder, type IdeaDetails } from './idea-model';
+import { ideaDraft, isDiscoveredIdea } from '../collection/idea-drafts';
+import type { FoundIdea } from '../collection/contracts';
 
 export type MaterialSource = 'manual' | 'telegram' | 'tiktok' | 'workshop';
 export type Material = IdeaDetails & {
@@ -16,6 +18,7 @@ export type Material = IdeaDetails & {
   stationId?: string;
   sourceUrl?: string;
   origin?: 'sample';
+  generatedDraft?: { title: string; body: string };
   archivedFrom?: string;
   statusBeforeArchive?: Exclude<IdeaDetails['status'], 'archived'>;
 };
@@ -39,9 +42,48 @@ const emit = (next: Snapshot) => {
 const message = (error: unknown) =>
   error instanceof Error ? error.message : 'Не удалось сохранить материалы';
 
+function archivedMaterial(record: Material, status: Material['statusBeforeArchive']): Material {
+  return {
+    ...record,
+    folderId: 'archive',
+    status: 'archived',
+    archivedFrom: record.folderId,
+    statusBeforeArchive: status,
+    revision: record.revision + 1,
+  };
+}
+
+function archiveUnchangedLegacyIdea(record: Material): Material {
+  if (record.status === 'archived' || !/^(tiktok|telegram)-idea-[a-f0-9]{24}$/.test(record.id))
+    return record;
+  const heading = /^# ([^\n]*)\n\n/.exec(record.body)?.[1];
+  if (heading === undefined || heading.trim() !== record.title) return record;
+  const evidence = record.evidence?.find(
+    ({ source, text, url }) =>
+      source === record.source &&
+      url &&
+      record.body === `# ${heading}\n\n${text}\n\nИсточник: ${url}`,
+  );
+  if (!evidence) return record;
+  const generatedTitle =
+    record.title === evidence.text.replace(/\s+/g, ' ').trim().slice(0, 180).trim();
+  if (record.folderId === 'video-ideas' && evidence.kind === 'comment' && generatedTitle)
+    return archivedMaterial(record, record.status);
+  if (
+    record.evidence.length !== 1 ||
+    record.favorite ||
+    record.status !== 'new' ||
+    record.priority !== 'normal' ||
+    record.folderId !== formatFolder(record.format) ||
+    (record.revision !== 1 && !generatedTitle)
+  )
+    return record;
+  return archivedMaterial(record, record.status);
+}
+
 function open() {
   return (database ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('e-content-library', 3);
+    const request = indexedDB.open('e-content-library', 6);
     request.onupgradeneeded = (event) => {
       const db = request.result;
       const tx = request.transaction!;
@@ -61,13 +103,17 @@ function open() {
         const previous = materials.getAll();
         previous.onsuccess = () => {
           for (const record of previous.result as Material[]) {
-            if (record.status === 'archived')
+            if (event.oldVersion < 3 && record.status === 'archived')
               materials.put({
                 ...record,
                 folderId: 'archive',
                 archivedFrom: record.folderId === 'archive' ? record.archivedFrom : record.folderId,
                 statusBeforeArchive: record.statusBeforeArchive ?? 'new',
               });
+            else {
+              const archived = archiveUnchangedLegacyIdea(record);
+              if (archived !== record) materials.put(archived);
+            }
           }
         };
         return;
@@ -330,9 +376,62 @@ export async function saveFoundIdea(
       evidence,
       folderId: existing?.folderId ?? formatFolder(input.format),
       favorite: existing?.favorite ?? false,
+      generatedDraft: isDiscoveredIdea(input.id)
+        ? (existing?.generatedDraft ?? { title: input.title, body: input.body })
+        : undefined,
     },
     existing?.revision,
   );
+}
+
+export async function reviewVideoIdeas(ideas: FoundIdea[]) {
+  const accepted = new Map(ideas.map((idea) => [idea.id, idea]));
+  await initializeLibrary();
+  await mutate(['materials'], (tx) => {
+    const store = tx.objectStore('materials');
+    const request = store.getAll();
+    request.onsuccess = () => {
+      for (const record of request.result as Material[]) {
+        const discovered = isDiscoveredIdea(record.id);
+        if ((!discovered && record.folderId !== 'video-ideas') || record.status === 'archived')
+          continue;
+        const legacy = archiveUnchangedLegacyIdea(record);
+        if (legacy !== record) {
+          store.put(legacy);
+          continue;
+        }
+        const topic = /^(tiktok|telegram)-topic-(.+)$/.exec(record.id)?.[2];
+        const draft = discovered ? record.generatedDraft : topic ? ideaDraft(topic) : undefined;
+        if (!draft || draft.title !== record.title || draft.body !== record.body) continue;
+        const approved = accepted.get(record.id);
+        const manualEvidence = record.evidence.filter(({ id }) => !/^(tiktok|telegram):/.test(id));
+        if (!approved) {
+          if (
+            !record.favorite &&
+            record.status === 'new' &&
+            record.priority === 'normal' &&
+            !manualEvidence.length
+          )
+            store.put(archivedMaterial(record, record.status));
+          continue;
+        }
+        const evidence = [...approved.evidence, ...manualEvidence];
+        const nextDraft = discovered ? { title: approved.title, body: approved.body } : draft;
+        if (
+          record.title !== nextDraft.title ||
+          record.body !== nextDraft.body ||
+          JSON.stringify(evidence) !== JSON.stringify(record.evidence)
+        )
+          store.put({
+            ...record,
+            ...nextDraft,
+            evidence,
+            revision: record.revision + 1,
+            generatedDraft: discovered ? nextDraft : undefined,
+          });
+      }
+    };
+  });
 }
 
 export async function deleteMaterial(id: string) {

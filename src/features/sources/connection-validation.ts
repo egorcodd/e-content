@@ -19,15 +19,3 @@ export function validateConnectionIdentity(platform: Platform, input: string) {
       : '';
   return { value: `@${name}`, error };
 }
-
-export function normalizeConnectionCode(input: string) {
-  return input.replace(/\s/g, '');
-}
-
-export function validatePreviewCode(input: string) {
-  const code = normalizeConnectionCode(input);
-  if (!code) return 'Введите код подтверждения.';
-  if (!/^\d{6}$/.test(code)) return 'Код должен состоять из 6 цифр.';
-  if (code !== '123456') return 'Неверный код. Проверьте и попробуйте ещё раз.';
-  return '';
-}

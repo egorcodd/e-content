@@ -4,6 +4,7 @@ import fs from 'node:fs';
 const origin = process.env.PREVIEW_URL || 'http://127.0.0.1:5186';
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+await context.route('**/api/collection/latest', (route) => route.fulfill({ json: { run: null } }));
 await context.addInitScript(() => {
   try {
     localStorage.setItem('e-content-sample-data', 'off');

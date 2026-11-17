@@ -1,7 +1,7 @@
 import { useId, useState, type PointerEvent } from 'react';
 import { AnimatePresence, motion, useInView, useReducedMotion } from 'motion/react';
-import { compact, day, fullDay, fmt, ease, type Point, type Metric } from './chart-model';
-import { series, metrics, valueAt } from './data';
+import { compact, day, fullDay, fmt, ease, type Metric } from './chart-model';
+import { series, metrics } from './data';
 import { useChartSize } from './useChartSize';
 import './analytics-charts.css';
 
@@ -13,7 +13,10 @@ function smoothPath(points: [number, number][]) {
     const from = points[i];
     const to = points[i + 1];
     const after = points[i + 2] || to;
-    path += `C${from[0] + (to[0] - before[0]) / 6},${from[1] + (to[1] - before[1]) / 6} ${to[0] - (after[0] - from[0]) / 6},${to[1] - (after[1] - from[1]) / 6} ${to[0]},${to[1]}`;
+    const dx = (to[0] - from[0]) / 3;
+    const bound = (y: number) =>
+      Math.max(Math.min(from[1], to[1]), Math.min(Math.max(from[1], to[1]), y));
+    path += `C${from[0] + dx},${bound(from[1] + (to[1] - before[1]) / 6)} ${to[0] - dx},${bound(to[1] - (after[1] - from[1]) / 6)} ${to[0]},${to[1]}`;
   }
   return path;
 }
@@ -26,7 +29,7 @@ function niceTicks(min: number, max: number, count = 4) {
   return Array.from({ length: Math.ceil((max - floor) / step) + 1 }, (_, i) => floor + i * step);
 }
 
-export function TrendPlot({
+export function TrendPlot<P extends { date: string }>({
   points,
   shown,
   metric,
@@ -34,14 +37,18 @@ export function TrendPlot({
   label,
   formatValue = fmt,
   dataTableAvailable = true,
+  readValue: value,
+  observations = false,
 }: {
-  points: Point[];
+  points: P[];
   shown: typeof series;
   metric: Metric;
   area: boolean;
   label?: string;
   formatValue?: (value: number) => string;
   dataTableAvailable?: boolean;
+  readValue: (point: P, seriesId: (typeof series)[number]['id']) => number;
+  observations?: boolean;
 }) {
   const gradientId = useId();
   const [ref, { width, height }] = useChartSize<HTMLDivElement>();
@@ -51,18 +58,33 @@ export function TrendPlot({
   const left = 46;
   const right = 6;
   const top = 10;
-  const values = points.flatMap((point) => shown.map((item) => valueAt(point, item.id, metric)));
-  const max = Math.max(1, ...values);
-  const min = Math.min(0, ...values);
+  let max = 1;
+  let min = 0;
+  for (const point of points) {
+    for (const item of shown) {
+      max = Math.max(max, value(point, item.id));
+      min = Math.min(min, value(point, item.id));
+    }
+  }
   const ticks = niceTicks(min * 1.05, max * 1.05);
   const ceiling = ticks.at(-1)!;
   const floor = ticks[0];
   const plotWidth = Math.max(1, width - left - right);
-  const x = (i: number) => left + (i / Math.max(1, points.length - 1)) * plotWidth;
+  const firstTime = Date.parse(points[0].date);
+  const duration = Date.parse(points.at(-1)!.date) - firstTime;
+  const x = (i: number) =>
+    left + (duration ? (Date.parse(points[i].date) - firstTime) / duration : 0.5) * plotWidth;
+  const time = new Intl.DateTimeFormat('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Moscow',
+  });
+  const shortDate = (date: string) =>
+    observations && duration < 86400000 ? time.format(new Date(date)) : day(date);
   const y = (value: number) => top + ((ceiling - value) / (ceiling - floor)) * (height - top - 1);
   const lines = shown.map((item) => ({
     ...item,
-    d: smoothPath(points.map((point, i) => [x(i), y(valueAt(point, item.id, metric))])),
+    d: smoothPath(points.map((point, i) => [x(i), y(value(point, item.id))])),
   }));
   const current = active == null ? null : points[active];
   const cursor = active == null ? 0 : x(active);
@@ -71,6 +93,9 @@ export function TrendPlot({
   const labels = Array.from({ length: tickCount }, (_, index) => index * step)
     .filter((i) => i < points.length - 1 - step / 2)
     .concat(points.length - 1);
+  const distinctLabels = labels.filter(
+    (index, i) => i === labels.length - 1 || x(labels[i + 1]) - x(index) > 65,
+  );
   const draw = { duration: reduced ? 0 : 1.4, ease };
   const glide = reduced
     ? { duration: 0 }
@@ -83,7 +108,12 @@ export function TrendPlot({
   function pick(event: PointerEvent<SVGSVGElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = (event.clientX - rect.left - left) / plotWidth;
-    setActive(Math.max(0, Math.min(points.length - 1, Math.round(ratio * (points.length - 1)))));
+    const target = left + ratio * plotWidth;
+    let nearest = 0;
+    for (let index = 1; index < points.length; index++) {
+      if (Math.abs(x(index) - target) < Math.abs(x(nearest) - target)) nearest = index;
+    }
+    setActive(nearest);
   }
   return (
     <div className="ag-plot">
@@ -95,7 +125,7 @@ export function TrendPlot({
             className="ag-trend-svg"
             role="img"
             tabIndex={0}
-            aria-label={`${label ?? metrics.find((m) => m.id === metric)!.label}: ${points.length} дней. Стрелки выбирают день.${dataTableAvailable ? ' Все значения по кнопке «Данные».' : ''}`}
+            aria-label={`${label ?? metrics.find((m) => m.id === metric)!.label}. ${observations ? 'Стрелки выбирают сбор.' : 'Стрелки выбирают день.'}${dataTableAvailable ? ' Все значения по кнопке «Данные».' : ''}`}
             onPointerMove={pick}
             onPointerDown={pick}
             onPointerLeave={() => setActive(null)}
@@ -153,16 +183,16 @@ export function TrendPlot({
               .reverse()
               .map((line) => (
                 <g key={line.id + metric + points.length}>
-                  {area && line.id !== 'total' && (
+                  {area && points.length > 1 && line.id !== 'total' && (
                     <motion.path
                       fill={`url(#${gradientId}-area-${line.id})`}
                       initial={{
                         opacity: 0,
-                        d: `${line.d}L${width - right},${y(0)}L${left},${y(0)}Z`,
+                        d: `${line.d}L${x(points.length - 1)},${y(0)}L${x(0)},${y(0)}Z`,
                       }}
                       animate={{
                         opacity: seen ? 1 : 0,
-                        d: `${line.d}L${width - right},${y(0)}L${left},${y(0)}Z`,
+                        d: `${line.d}L${x(points.length - 1)},${y(0)}L${x(0)},${y(0)}Z`,
                       }}
                       transition={{
                         opacity: { duration: 1, delay: reduced ? 0 : 0.5 },
@@ -189,6 +219,15 @@ export function TrendPlot({
                       d: { duration: 0.6, ease },
                     }}
                   />
+                  {points.length === 1 && (
+                    <circle
+                      cx={x(0)}
+                      cy={y(value(points[0], line.id))}
+                      r={4}
+                      style={{ fill: line.color }}
+                      className="ag-observation-dot"
+                    />
+                  )}
                 </g>
               ))}
             <AnimatePresence>
@@ -214,8 +253,8 @@ export function TrendPlot({
                       r={4.5}
                       style={{ fill: item.color }}
                       className="ag-cursor-dot"
-                      initial={{ cx: cursor, cy: y(valueAt(current, item.id, metric)) }}
-                      animate={{ cx: cursor, cy: y(valueAt(current, item.id, metric)) }}
+                      initial={{ cx: cursor, cy: y(value(current, item.id)) }}
+                      animate={{ cx: cursor, cy: y(value(current, item.id)) }}
                       transition={glide}
                     />
                   ))}
@@ -236,12 +275,15 @@ export function TrendPlot({
               exit={{ opacity: 0, scale: 0.96 }}
               transition={{ x: glide, opacity: { duration: 0.15 }, scale: { duration: 0.2 } }}
             >
-              <strong>{fullDay(current.date)}</strong>
+              <strong>
+                {fullDay(current.date)}
+                {observations && ` · ${time.format(new Date(current.date))}`}
+              </strong>
               {shown.map((item) => (
                 <span key={item.id}>
                   <i style={{ background: item.color }} className={item.dash ? 'is-dashed' : ''} />
                   {item.label}
-                  <b>{formatValue(valueAt(current, item.id, metric))}</b>
+                  <b>{formatValue(value(current, item.id))}</b>
                 </span>
               ))}
             </motion.div>
@@ -249,16 +291,24 @@ export function TrendPlot({
         </AnimatePresence>
       </div>
       <div className="ag-x-axis" aria-hidden="true">
-        {labels.map((index) => (
+        {distinctLabels.map((index) => (
           <span
             key={index}
             style={{
               left: x(index),
               opacity: current && Math.abs(x(index) - cursor) < 64 ? 0 : 1,
             }}
-            className={index === 0 ? 'is-first' : index === points.length - 1 ? 'is-last' : ''}
+            className={
+              points.length === 1
+                ? ''
+                : index === 0
+                  ? 'is-first'
+                  : index === points.length - 1
+                    ? 'is-last'
+                    : ''
+            }
           >
-            {day(points[index].date)}
+            {shortDate(points[index].date)}
           </span>
         ))}
         <AnimatePresence>
@@ -271,7 +321,7 @@ export function TrendPlot({
               exit={{ opacity: 0, y: 4 }}
               transition={{ x: glide, default: { duration: 0.2 } }}
             >
-              {day(current.date)}
+              {shortDate(current.date)}
             </motion.b>
           )}
         </AnimatePresence>

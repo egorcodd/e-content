@@ -35,6 +35,9 @@ import {
   type Material,
 } from '../../features/materials/repository';
 import './materials.css';
+import { importIdeas } from '../../features/collection/import-ideas';
+import { api } from '../../features/collection/api';
+import type { CollectionRun } from '../../features/collection/contracts';
 export { initializeLibrary as preloadMaterials } from '../../features/materials/repository';
 
 const count = (value: number) =>
@@ -42,6 +45,15 @@ const count = (value: number) =>
 const priorityOrder = { high: 0, normal: 1, low: 2 };
 export default function MaterialsPage({ notify }: { notify: (message: string) => void }) {
   const library = useLibrary();
+  useEffect(() => {
+    const sync = () =>
+      void api<{ run: CollectionRun | null; ideaAnalysisVersion?: number }>('/collection/latest')
+        .then(({ run, ideaAnalysisVersion }) => run && importIdeas(run, ideaAnalysisVersion))
+        .catch(() => {});
+    sync();
+    window.addEventListener('focus', sync);
+    return () => window.removeEventListener('focus', sync);
+  }, []);
   const pageElement = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const preserveViewport = () => {

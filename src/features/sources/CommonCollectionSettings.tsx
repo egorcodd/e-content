@@ -61,7 +61,7 @@ function DefaultsEditor({ settings, runLimits, notify }: Props) {
         </fieldset>
         <div className="common-settings-limits">
           <ParameterRange
-            label="Лимит публикаций"
+            label="Публикации на источник Telegram"
             value={draft.maxPublications}
             max={500}
             volumeBudget={draftLimits.maxPublications}
@@ -69,7 +69,7 @@ function DefaultsEditor({ settings, runLimits, notify }: Props) {
             onChange={(maxPublications) => setDraft({ ...draft, maxPublications })}
           />
           <ParameterRange
-            label="Лимит комментариев"
+            label="Комментарии на источник Telegram"
             value={draft.maxComments}
             max={10000}
             volumeBudget={draftLimits.maxComments}

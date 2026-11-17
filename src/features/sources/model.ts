@@ -32,6 +32,7 @@ export type PlatformSettings = {
   };
   tiktok: {
     custom: CollectionOverrides | null;
+    commentsPerVideo?: number;
     replies: boolean;
     order: CommentOrder;
     minLikes: number;
@@ -231,7 +232,9 @@ export function validatePlatformSettings(value: PlatformSettings): PlatformSetti
   if (
     typeof tiktok?.replies !== 'boolean' ||
     !['platform', 'recent', 'top'].includes(tiktok.order) ||
-    !whole(tiktok.minLikes, 10000)
+    !whole(tiktok.minLikes, 10000) ||
+    (tiktok.commentsPerVideo !== undefined &&
+      (!whole(tiktok.commentsPerVideo, 10000) || tiktok.commentsPerVideo < 1))
   )
     throw new Error('Проверьте параметры TikTok.');
   return {
@@ -246,6 +249,9 @@ export function validatePlatformSettings(value: PlatformSettings): PlatformSetti
       replies: tiktok.replies,
       order: (tiktok.order as string) === 'top' ? 'platform' : tiktok.order,
       minLikes: tiktok.minLikes,
+      ...(tiktok.commentsPerVideo === undefined
+        ? {}
+        : { commentsPerVideo: tiktok.commentsPerVideo }),
     },
   };
 }

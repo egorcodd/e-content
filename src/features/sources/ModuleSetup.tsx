@@ -6,8 +6,9 @@ import { PlatformCollectionSettings } from './PlatformCollectionSettings';
 import { ConnectorObject } from './ConnectorObject';
 import { ConnectorStatus } from './ConnectorStatus';
 import { PlatformSteps } from './PlatformSteps';
-import { PreviewConnectionFlow } from './PreviewConnectionFlow';
-import { usePreviewConnections } from './preview-connections';
+import { TelegramConnection } from './TelegramConnection';
+import { TikTokConnection } from './TikTokConnection';
+import { useConnections } from './connection-store';
 import { connectorCatalog } from './connector-catalog';
 import {
   plural,
@@ -46,7 +47,7 @@ export function ModuleSetup({
   remove: (source: AnalysisSource) => void;
   notify: (text: string) => void;
 }) {
-  const { accounts } = usePreviewConnections();
+  const { accounts, tiktokAccount } = useConnections();
   const [expanded, setExpanded] = useState(true);
   const current = platform === 'tiktok' ? 'tiktok' : 'telegram';
   const provider = connectorCatalog.find((item) => item.id === current)!;
@@ -88,27 +89,34 @@ export function ModuleSetup({
                 </div>
                 <div className="cm-module-account">
                   <div>
-                    <ConnectorStatus platform={item.id} accounts={accounts} />
+                    <ConnectorStatus
+                      platform={item.id}
+                      accounts={accounts}
+                      connection={item.id === 'tiktok' ? tiktokAccount : undefined}
+                    />
                     {account && (
                       <small>
                         {account.displayName} · {account.handle}
-                        <span>Пример</span>
                       </small>
                     )}
                   </div>
                   <button
                     className="ec-button"
-                    aria-label={`${account ? 'Настроить' : 'Подключить'} ${item.title}`}
+                    aria-label={`${item.id === 'tiktok' || account ? 'Настроить' : 'Подключить'} ${item.title}`}
                     onClick={() => choose(item.id)}
                   >
-                    {account ? 'Настроить' : 'Подключить'}
+                    {item.id === 'tiktok' || account ? 'Настроить' : 'Подключить'}
                     <PlusIcon size={14} />
                   </button>
                 </div>
                 <div className="cv-module-footer">
                   <button className="ec-text" onClick={() => choose(item.id, 1)}>
                     <PlusIcon size={14} />
-                    Добавить источник
+                    {item.id === 'tiktok'
+                      ? tiktokAccount?.transport === 'native'
+                        ? 'Ролики для цеха'
+                        : 'Выбрать ролики'
+                      : 'Добавить источник'}
                   </button>
                   <span>
                     {
@@ -158,12 +166,22 @@ export function ModuleSetup({
                   step={step}
                   setStep={setStep}
                   accounts={accounts}
+                  connection={current === 'tiktok' ? tiktokAccount : undefined}
+                  tiktokComments={{
+                    enabled: platforms.tiktok.custom?.comments ?? settings.comments,
+                    replies: platforms.tiktok.replies,
+                    runLimit: runLimits.maxComments,
+                  }}
                   sources={sources}
                   edit={edit}
                   remove={remove}
                   notify={notify}
                   accountPanel={
-                    <PreviewConnectionFlow platform={current} next={() => setStep(1)} />
+                    current === 'telegram' ? (
+                      <TelegramConnection next={() => setStep(1)} />
+                    ) : (
+                      <TikTokConnection next={() => setStep(1)} />
+                    )
                   }
                 />
               </motion.div>

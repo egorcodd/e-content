@@ -1,0 +1,85 @@
+:root {
+  color-scheme: dark;
+  font:
+    14px/1.5 system-ui,
+    sans-serif;
+  color: #e8e8e8;
+  background: #101010;
+}
+header small {
+  font-size: 10px;
+  color: #888;
+  font-weight: 400;
+  margin-left: 5px;
+}
+body {
+  width: 310px;
+  margin: 0;
+  padding: 22px;
+  box-sizing: border-box;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 19px;
+  font-weight: 600;
+  margin-bottom: 22px;
+}
+p {
+  color: #999;
+  font-size: 12px;
+}
+label {
+  display: block;
+  margin-bottom: 8px;
+}
+input,
+button {
+  font: inherit;
+  border-radius: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+}
+input {
+  padding: 10px 12px;
+  border: 1px solid #363636;
+  background: #171717;
+  color: #eee;
+  letter-spacing: 2px;
+}
+input:focus-visible {
+  outline: 1px solid #aaa;
+  outline-offset: 2px;
+}
+button {
+  background: #ececec;
+  color: #111;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  margin-top: 12px;
+  transition: background 0.2s;
+}
+button:hover {
+  background: #fff;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.secondary {
+  background: #1b1b1b;
+  color: #aaa;
+  border-color: #333;
+}
+#error {
+  color: #dc8b8b;
+  margin-bottom: 0;
+}
+body[data-online='true'] #status {
+  color: #80b597;
+}
+[hidden] {
+  display: none !important;
+}

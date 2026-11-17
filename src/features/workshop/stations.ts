@@ -80,7 +80,12 @@ export const stations = [
     tint: undefined,
     hex: undefined,
     at: [4.7, 1.25],
-    steps: ['Снимки показателей', 'Сравнение периодов', 'Динамика площадок', 'report.md'],
+    steps: [
+      'Получение счётчиков',
+      'Обновление данных роликов',
+      'Сохранение замера',
+      'История сборов',
+    ],
   },
 ] as const;
 export const orchestrator = {

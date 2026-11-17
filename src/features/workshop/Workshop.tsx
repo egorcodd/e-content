@@ -25,9 +25,8 @@ import type { SurfaceStyle } from './IsoView';
 import { connections, waitForStage, type WorkshopTransfer, type WorkshopArrival } from './workflow';
 import './workshop.css';
 import { preloadWorkshopScene } from './scene-loader';
-import { readWorkshopMemory, writeWorkshopMemory } from './workspace-cache';
-import { readMaterial, saveRunArtifact } from '../materials/repository';
 import { WorkshopSources } from '../sources/WorkshopSources';
+import { useCollectionRun } from '../collection/useCollectionRun';
 
 const IsoView = lazy(preloadWorkshopScene);
 let webgl: boolean | undefined;
@@ -75,6 +74,29 @@ const variants = [
   { id: 'mesh', label: 'Сетка' },
   { id: 'smoke', label: 'Дымка' },
 ];
+const workspaceSteps: Record<string, readonly string[]> = {
+  telegram: ['Доступ к каналам', 'Публикации за период', 'Сохранение без повторов', 'telegram.md'],
+  tiktok: ['Публичные ролики', 'Комментарии и ответы', 'Сохранение исходных реплик', 'tiktok.md'],
+  comments: [
+    'Обсуждения публикаций',
+    'Ответы и вложенные ветки',
+    'Исходные реплики и ссылки',
+    'comments.md',
+  ],
+  collector: ['Объединение записей', 'Проверка дат', 'Канонические ID и ссылки', 'inbox.md'],
+  ideas: [
+    'Вопросы аудитории',
+    'Объединение одинаковых вопросов',
+    'Основания из источников',
+    'ideas.md',
+  ],
+  materials: [
+    'Идеи без заданного формата',
+    'Основания и ссылки',
+    'Сохранение подборки',
+    'materials.md',
+  ],
+};
 
 export function Workshop({
   notify,
@@ -83,6 +105,7 @@ export function Workshop({
   enabled = true,
   openMaterial,
   openSources,
+  openAnalytics,
 }: {
   notify: (s: string) => void;
   presentation?: 'gallery' | 'workspace';
@@ -90,14 +113,15 @@ export function Workshop({
   enabled?: boolean;
   openMaterial?: (id: string) => void;
   openSources?: (platform: 'telegram' | 'tiktok') => void;
+  openAnalytics?: () => void;
 }) {
   const workspace = presentation === 'workspace';
-  const memory = useRef(workspace ? readWorkshopMemory() : null).current;
+  const collection = useCollectionRun(workspace);
   const [version, setVersion] = useState<'chain' | 'hub'>(workspace ? 'hub' : 'chain');
   const items = version === 'hub' ? hubStations : stations;
   const [batch, setBatch] = useState<WorkshopTransfer[]>([]);
   const [batchArrivals, setBatchArrivals] = useState<WorkshopArrival[]>([]);
-  const [receivedFrom, setReceivedFrom] = useState<string[]>(memory?.received ?? []);
+  const [receivedFrom, setReceivedFrom] = useState<string[]>([]);
   const receivedCount = receivedFrom.length;
   const [surface, setSurface] = useState<SurfaceStyle>('smoke');
   const [selected, setSelected] = useState<string | null>(null);
@@ -105,11 +129,10 @@ export function Workshop({
   const [cycle, setCycle] = useState(false);
   const [step, setStep] = useState(-1);
   const [active, setActive] = useState<string | null>(null);
-  const [done, setDone] = useState<string[]>(memory?.done ?? []);
-  const [halted, setHalted] = useState<string | null>(memory?.interrupted ?? null);
-  const [events, setEvents] = useState<string[]>(memory?.events ?? []);
-  const [stationSteps, setStationSteps] = useState<Record<string, number>>(memory?.steps ?? {});
-  const [resultIds, setResultIds] = useState<Record<string, string>>(memory?.resultIds ?? {});
+  const [done, setDone] = useState<string[]>([]);
+  const [halted, setHalted] = useState<string | null>(null);
+  const [events, setEvents] = useState<string[]>([]);
+  const [stationSteps, setStationSteps] = useState<Record<string, number>>({});
   const [repeat, setRepeat] = useState<boolean | null>(null);
   const pendingRepeat = useRef<boolean | null>(null);
   const panelVisible = useRef(false);
@@ -121,18 +144,58 @@ export function Workshop({
   const panel = useRef<HTMLElement>(null);
   const previous = useRef<HTMLElement | null>(null);
   const reduced = useReducedMotion();
-  const station = items.find((s) => s.id === selected);
+  const baseStation = items.find((s) => s.id === selected);
+  const station =
+    baseStation && workspace
+      ? { ...baseStation, steps: workspaceSteps[baseStation.id] ?? baseStation.steps }
+      : baseStation;
+  const observed = useRef<{ id: string; done: string[]; status: string } | null>(null);
+  const deliveryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(deliveryTimer.current), []);
   useEffect(() => {
-    if (workspace)
-      writeWorkshopMemory({
-        done,
-        events,
-        steps: stationSteps,
-        received: receivedFrom,
-        resultIds,
-        interrupted: running ? activeRef.current : halted,
-      });
-  }, [workspace, done, events, stationSteps, receivedFrom, resultIds, running, halted, active]);
+    if (!workspace) return;
+    const real = collection.run;
+    if (!real) return;
+    const previous = observed.current;
+    const newlyDone =
+      previous?.id === real.id
+        ? real.done.filter((id) => !previous.done.includes(id) && id !== 'orchestrator')
+        : [];
+    observed.current = { id: real.id, done: real.done, status: real.status };
+    setDone(real.done);
+    setStationSteps(real.steps);
+    setEvents(real.events);
+    setRunning(real.status === 'running');
+    setActive(real.status === 'running' ? real.active : null);
+    activeRef.current = real.status === 'running' ? real.active : null;
+    setStep(real.active ? (real.steps[real.active] ?? 0) : -1);
+    setHalted(real.status !== 'running' && real.status !== 'completed' ? real.active : null);
+    setReceivedFrom(real.done.filter((id) => id !== 'orchestrator'));
+    if (
+      panelVisible.current &&
+      followRun.current &&
+      (real.active || real.done.includes('orchestrator'))
+    )
+      setSelected(real.active ?? 'orchestrator');
+    if (newlyDone.length) {
+      const deliveries: WorkshopTransfer[] = newlyDone
+        .filter((id) => items.some((item) => item.id === id))
+        .map((from) => ({
+          from: from as WorkshopTransfer['from'],
+          to: 'orchestrator',
+          startedAt: performance.now(),
+          duration: 1100,
+        }));
+      setBatch(deliveries);
+      clearTimeout(deliveryTimer.current);
+      deliveryTimer.current = setTimeout(() => {
+        setBatch([]);
+        setBatchArrivals(deliveries.map((edge) => ({ ...edge, receivedAt: performance.now() })));
+      }, 1100);
+    }
+    if (previous?.id === real.id && previous.status === 'running' && real.status !== 'running')
+      notify(real.status === 'completed' ? 'Сбор завершён' : (real.error ?? 'Сбор остановлен'));
+  }, [workspace, collection.run]);
   useEffect(() => () => control.current?.abort(), []);
   useEffect(() => {
     if (!hasWebGL()) onReady?.();
@@ -144,6 +207,14 @@ export function Workshop({
         panel.current?.focus({ preventScroll: true });
     });
   function stop() {
+    if (workspace) {
+      void collection
+        .cancel()
+        .catch((error) =>
+          notify(error instanceof Error ? error.message : 'Не удалось остановить сбор.'),
+        );
+      return;
+    }
     control.current?.abort();
     control.current = null;
     if (activeRef.current) setHalted(activeRef.current);
@@ -191,6 +262,18 @@ export function Workshop({
     return () => window.removeEventListener('keydown', onKey);
   }, [panelOpen, enabled]);
   async function run(all: boolean) {
+    if (workspace) {
+      try {
+        await collection.start(all ? 'cycle' : (selected ?? 'cycle'));
+        setCycle(all);
+        panelVisible.current = true;
+        followRun.current = true;
+        if (!selected) setSelected(all ? 'orchestrator' : 'telegram');
+      } catch (error) {
+        notify(error instanceof Error ? error.message : 'Не удалось запустить сбор.');
+      }
+      return;
+    }
     const coreOnly = selected === 'orchestrator' && halted === 'orchestrator' && !all;
     if (version === 'hub' && selected === 'orchestrator' && !coreOnly) all = true;
     if (all) {
@@ -200,7 +283,6 @@ export function Workshop({
     stop();
     panelVisible.current = true;
     followRun.current = true;
-    const runId = crypto.randomUUID();
     const abort = new AbortController();
     control.current = abort;
     setRunning(true);
@@ -230,25 +312,6 @@ export function Workshop({
         }
         if (abort.signal.aborted) return;
         setStep(node.steps.length);
-        if (workspace) {
-          const result = await saveRunArtifact({
-            id: `run-${runId}-${node.id}`,
-            runId,
-            stationId: node.id,
-            folderId: 'reports',
-            title: `${node.name} · ${new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' }).format(new Date())}`,
-            source: node.id === 'telegram' || node.id === 'tiktok' ? node.id : 'workshop',
-            favorite: false,
-            body: `# ${node.name}\n\nФайл: ${node.steps.at(-1)}\n\n## Структура обработки\n\n${node.steps
-              .slice(0, -1)
-              .map((label) => `- ${label}`)
-              .join(
-                '\n',
-              )}\n\n## Данные\n\nСетевой источник ещё не подключён. Комментарии и публикации в этот файл не загружались.\n`,
-          });
-          if (abort.signal.aborted) return;
-          setResultIds((old) => ({ ...old, [node.id]: result.id }));
-        }
         setDone((old) => [...old, node.id]);
         const event = `${node.name} / ${node.steps.at(-1)}`;
         setEvents((old) => [event, ...old.filter((item) => item !== event)].slice(0, 7));
@@ -301,20 +364,6 @@ export function Workshop({
           setStationSteps((old) => ({ ...old, orchestrator: i + 1 }));
         }
         setStep(orchestrator.steps.length);
-        if (workspace) {
-          const result = await saveRunArtifact({
-            id: `run-${runId}-orchestrator`,
-            runId,
-            stationId: 'orchestrator',
-            folderId: 'reports',
-            title: `Ядро · ${new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' }).format(new Date())}`,
-            source: 'workshop',
-            favorite: false,
-            body: `# Отчёт запуска цеха\n\nЗапуск: ${runId}\n\n## Участки\n\n${nodes.map((node) => `- ${node.name}: ${node.steps.at(-1)}`).join('\n')}\n\nЭто технический отчёт обработки. Найденные идеи и их основания сохраняются отдельно в библиотеке. Сетевой сбор комментариев ещё не подключён; этот запуск не создавал идеи из источников.\n`,
-          });
-          if (abort.signal.aborted) return;
-          setResultIds((old) => ({ ...old, orchestrator: result.id }));
-        }
         setDone((old) => [...old, 'orchestrator']);
         setEvents((old) =>
           ['Ядро / workspace.md', ...old.filter((item) => item !== 'Ядро / workspace.md')].slice(
@@ -344,14 +393,19 @@ export function Workshop({
   }
   const states: Record<string, StatusKind> = {};
   const progress: Record<string, number> = {};
+  const partialRun = workspace && collection.run?.status === 'partial';
   for (const s of items) {
-    states[s.id] = done.includes(s.id)
-      ? 'done'
-      : active === s.id
-        ? 'run'
-        : halted === s.id
-          ? 'pause'
-          : 'wait';
+    states[s.id] =
+      (partialRun && s.id === 'orchestrator') ||
+      (workspace && collection.run?.failures?.[s.id] && active !== s.id)
+        ? 'pause'
+        : done.includes(s.id)
+          ? 'done'
+          : active === s.id
+            ? 'run'
+            : halted === s.id
+              ? 'pause'
+              : 'wait';
     progress[s.id] = done.includes(s.id)
       ? 1
       : active === s.id || halted === s.id
@@ -380,6 +434,19 @@ export function Workshop({
       </div>
     );
   const panelState: StatusKind = selected ? states[selected] : 'wait';
+  const corePartial = partialRun && selected === 'orchestrator';
+  const panelIssue =
+    workspace &&
+    (collection.error ||
+      (selected &&
+        (collection.run?.failures?.[selected] ||
+          (selected === 'orchestrator' && collection.run?.error))));
+  const reportEvents = events.filter((event) => event !== panelIssue);
+  const panelSources = Object.entries(collection.run?.sources ?? {}).filter(([, source]) =>
+    selected === 'tiktok'
+      ? source.platform === 'tiktok'
+      : corePartial && source.status !== 'completed',
+  );
   const panelStep =
     selected && done.includes(selected)
       ? (station?.steps.length ?? 0)
@@ -391,7 +458,15 @@ export function Workshop({
   const panelRunning = panelState === 'run';
   const panelControlsRun = running && (panelRunning || (followRun.current && cycle));
   const requestRun = (all: boolean) => {
-    if ((all && done.length > 0) || (selected && done.includes(selected))) setRepeat(all);
+    if (
+      (all && done.length > 0) ||
+      (selected && done.includes(selected)) ||
+      (workspace &&
+        (selected === 'telegram' || selected === 'tiktok') &&
+        !!collection.run &&
+        collection.run.counts.posts + collection.run.counts.comments > 0)
+    )
+      setRepeat(all);
     else void run(all);
   };
   return (
@@ -442,6 +517,7 @@ export function Workshop({
           </button>
           <button
             className={'ec-button ec-white ' + (running ? 'is-running' : '')}
+            disabled={workspace && (collection.loading || collection.pending)}
             onClick={() => (running ? stop() : requestRun(true))}
           >
             {running ? <StopIcon size={14} weight="fill" /> : <PlayIcon size={14} weight="fill" />}
@@ -555,6 +631,24 @@ export function Workshop({
                 <small>{station.sub}</small>
               </div>
             </div>
+            {workspace && collection.run && (
+              <div className="wg-real-counts" role="status">
+                <span>
+                  Публикации <b>{collection.run.counts.posts}</b>
+                </span>
+                <span>
+                  Комментарии <b>{collection.run.counts.comments}</b>
+                </span>
+                <span>
+                  Идеи <b>{collection.run.counts.ideas}</b>
+                </span>
+              </div>
+            )}
+            {panelIssue && (
+              <p className="wg-real-error" data-partial={partialRun || undefined} role="status">
+                {panelIssue}
+              </p>
+            )}
             {workspace && openSources && (station.id === 'telegram' || station.id === 'tiktok') && (
               <WorkshopSources
                 platform={station.id}
@@ -564,21 +658,80 @@ export function Workshop({
                 }}
               />
             )}
+            {workspace &&
+              panelSources.map(([id, source]) => (
+                <div className="wg-configured-sources" key={id}>
+                  <div>
+                    <FileTextIcon size={15} />
+                    <span>{source.platform === 'tiktok' ? 'Сбор TikTok' : 'Сбор Telegram'}</span>
+                  </div>
+                  <ul>
+                    {source.videos && (
+                      <li>
+                        Пройдено роликов: {source.videos.processed} из {source.videos.selected}
+                      </li>
+                    )}
+                    {source.failedRequest && (
+                      <li>
+                        Остановка на этапе «
+                        {
+                          {
+                            profile: 'профиль',
+                            videos: 'список роликов',
+                            video: 'данные ролика',
+                            comments: 'комментарии',
+                            replies: 'ответы',
+                          }[source.failedRequest.stage]
+                        }
+                        »
+                        {source.failedRequest.videoNumber &&
+                          ` · ролик ${source.failedRequest.videoNumber}`}
+                        {source.failedRequest.upstreamStatus &&
+                          ` · HTTP ${source.failedRequest.upstreamStatus}`}
+                      </li>
+                    )}
+                    <li>Сохранено комментариев: {source.comments}</li>
+                    {source.status === 'completed' &&
+                      source.stopCode === 'TIKTOK_PER_VIDEO_LIMIT' &&
+                      source.limits && (
+                        <li>
+                          Лимит {source.limits.commentsPerVideo} комментариев достигнут на{' '}
+                          {source.limits.limitedVideos} роликах
+                        </li>
+                      )}
+                    {source.receivedComments !== undefined &&
+                      source.receivedComments !== source.comments && (
+                        <li>Получено до фильтрации: {source.receivedComments}</li>
+                      )}
+                    {source.expectedComments !== undefined && (
+                      <li>Счётчик TikTok: {source.expectedComments}</li>
+                    )}
+                  </ul>
+                  <a className="ec-text" href={source.url} target="_blank" rel="noreferrer">
+                    Открыть источник
+                    <ArrowRightIcon size={14} />
+                  </a>
+                </div>
+              ))}
             <div className="wg-panel-source">
               <FileTextIcon size={16} />
               {station.steps.at(-1)}
               <StatusBadge
                 kind={panelState}
                 label={
-                  panelState === 'done'
-                    ? 'Готово'
-                    : panelState === 'run'
-                      ? transfer
-                        ? 'Передача файла'
-                        : 'В работе'
-                      : panelState === 'pause'
-                        ? 'Пауза'
-                        : 'Ожидает запуска'
+                  corePartial
+                    ? 'Частичный результат'
+                    : panelState === 'done'
+                      ? 'Готово'
+                      : panelState === 'run'
+                        ? transfer
+                          ? 'Передача файла'
+                          : 'В работе'
+                        : panelState === 'pause'
+                          ? workspace && collection.run?.failures?.[station.id]
+                            ? 'Нужно внимание'
+                            : 'Пауза'
+                          : 'Ожидает запуска'
                 }
               />
             </div>
@@ -636,51 +789,80 @@ export function Workshop({
                   Открыть библиотеку идей
                 </button>
               )}
-              <button
-                className={'ec-button ec-white ' + (running ? 'is-running' : '')}
-                disabled={running && !panelControlsRun}
-                onClick={() =>
-                  panelControlsRun
-                    ? stop()
-                    : requestRun(station.id === 'orchestrator' && halted !== station.id)
-                }
-              >
-                {panelControlsRun ? (
-                  <StopIcon size={14} weight="fill" />
-                ) : (
-                  <PlayIcon size={14} weight="fill" />
-                )}
-                {running && !panelControlsRun
-                  ? 'Обработка продолжается'
-                  : panelControlsRun
-                    ? cycle
-                      ? 'Остановить цикл'
-                      : 'Остановить'
-                    : panelState === 'done'
-                      ? 'Запустить заново'
-                      : panelState === 'pause'
-                        ? 'Продолжить участок'
-                        : station.id === 'orchestrator'
-                          ? 'Запустить весь цикл'
-                          : 'Запустить участок'}
-              </button>
+              {workspace && station.id === 'analytics' && openAnalytics ? (
+                <button
+                  className="ec-button ec-white"
+                  onClick={() => {
+                    close();
+                    openAnalytics();
+                  }}
+                >
+                  Открыть аналитику
+                </button>
+              ) : (
+                <button
+                  className={'ec-button ec-white ' + (running ? 'is-running' : '')}
+                  disabled={
+                    (running && !panelControlsRun) ||
+                    (workspace &&
+                      (collection.loading || collection.pending || station.id === 'analytics'))
+                  }
+                  onClick={() =>
+                    panelControlsRun
+                      ? stop()
+                      : requestRun(station.id === 'orchestrator' && halted !== station.id)
+                  }
+                >
+                  {panelControlsRun ? (
+                    <StopIcon size={14} weight="fill" />
+                  ) : (
+                    <PlayIcon size={14} weight="fill" />
+                  )}
+                  {workspace && station.id === 'analytics'
+                    ? 'Пока недоступно'
+                    : running && !panelControlsRun
+                      ? 'Обработка продолжается'
+                      : panelControlsRun
+                        ? cycle
+                          ? 'Остановить цикл'
+                          : 'Остановить'
+                        : panelState === 'done' || corePartial
+                          ? 'Запустить заново'
+                          : panelState === 'pause'
+                            ? workspace
+                              ? station.id === 'telegram' || station.id === 'tiktok'
+                                ? 'Запустить заново'
+                                : 'Обработать сохранённое'
+                              : 'Продолжить участок'
+                            : station.id === 'orchestrator'
+                              ? 'Запустить весь цикл'
+                              : 'Запустить участок'}
+                </button>
+              )}
               <AnimatePresence>
-                {panelState === 'done' && (
+                {(panelState === 'done' ||
+                  (workspace &&
+                    collection.run &&
+                    collection.run.status !== 'running' &&
+                    collection.run.counts.posts + collection.run.counts.comments > 0)) && (
                   <motion.button
                     className="ec-button ec-glass"
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
                     onClick={async () => {
-                      const material =
-                        workspace && resultIds[station.id]
-                          ? await readMaterial(resultIds[station.id])
-                          : undefined;
-                      downloadText(
-                        workspace ? station.steps.at(-1)! : 'e-content-report.md',
-                        material?.body ??
-                          '# e-content\n\n' + events.map((e) => '- ' + e).join('\n'),
-                      );
+                      if (workspace && collection.run) {
+                        const link = document.createElement('a');
+                        link.href = `/api/collection/runs/${collection.run.id}/export.md`;
+                        link.download = `${Object.values(collection.run.sources ?? {}).some((source) => source.platform === 'tiktok') ? 'e-content' : 'telegram'}-${collection.run.id}.md`;
+                        document.body.append(link);
+                        link.click();
+                        link.remove();
+                      } else
+                        downloadText(
+                          'e-content-report.md',
+                          '# e-content\n\n' + events.map((event) => '- ' + event).join('\n'),
+                        );
                     }}
                   >
                     <DownloadSimpleIcon size={16} className="ec-ico-drop" />
@@ -689,11 +871,11 @@ export function Workshop({
                 )}
               </AnimatePresence>
             </div>
-            {events.length > 0 && (
+            {reportEvents.length > 0 && (
               <div className="wg-events">
                 <h4>{workspace ? 'Отчёты запуска' : 'Материалы'}</h4>
                 <AnimatePresence initial={false}>
-                  {events.map((event) => (
+                  {reportEvents.map((event) => (
                     <motion.div
                       key={event}
                       layout
@@ -703,7 +885,11 @@ export function Workshop({
                     >
                       <FileTextIcon size={15} />
                       {event}
-                      <CheckIcon size={13} weight="bold" />
+                      {workspace && event === collection.run?.error ? (
+                        <StatusIcon kind="err" size={13} />
+                      ) : (
+                        <CheckIcon size={13} weight="bold" />
+                      )}
                     </motion.div>
                   ))}
                 </AnimatePresence>

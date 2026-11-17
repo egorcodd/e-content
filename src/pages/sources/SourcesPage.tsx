@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { PlusIcon } from '@phosphor-icons/react';
 import { LabDialog } from '../../shared/ui';
 import { ModuleSetup } from '../../features/sources/ModuleSetup';
 import { SourceDialog } from '../../features/sources/SourceDialog';
 import { useSources, removeSource } from '../../features/sources/repository';
-import { readConnections, type ConnectedAccount } from '../../features/sources/connections';
+import { useConnections } from '../../features/sources/connection-store';
 import type { AnalysisSource, Platform } from '../../features/sources/model';
 import './sources.css';
 
@@ -19,7 +19,7 @@ export default function SourcesPage({ notify }: { notify: (text: string) => void
   const [form, setForm] = useState<{ source?: AnalysisSource; platform?: Platform } | null>(null);
   const [remove, setRemove] = useState<AnalysisSource | null>(null);
   const [error, setError] = useState('');
-  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
+  const { accounts } = useConnections();
 
   useLayoutEffect(() => {
     function normalizeUrl() {
@@ -40,25 +40,6 @@ export default function SourcesPage({ notify }: { notify: (text: string) => void
     };
     window.addEventListener('popstate', onBack);
     return () => window.removeEventListener('popstate', onBack);
-  }, []);
-
-  useEffect(() => {
-    let generation = 0;
-    const refresh = async () => {
-      const sequence = ++generation;
-      try {
-        const state = await readConnections();
-        if (generation === sequence) setAccounts(state.accounts);
-      } catch {
-        if (generation === sequence) setAccounts([]);
-      }
-    };
-    void refresh();
-    window.addEventListener('focus', refresh);
-    return () => {
-      generation++;
-      window.removeEventListener('focus', refresh);
-    };
   }, []);
 
   function changePlatform(value: Platform) {

@@ -1,7 +1,7 @@
 import { AnimatedNumber } from '../../shared/ui';
 import { fmt, signedFmt } from './chart-model';
 import type { TikTokMeasurement } from './contracts';
-import { tiktokSeries } from './data';
+import { measurementDate, tiktokSeries } from './data';
 import { MetricDelta } from './MetricDelta';
 import type { AnalyticsPeriod } from './model';
 import { TrendPlot } from './TrendPlot';
@@ -22,14 +22,16 @@ export function AudienceGrowth({
     <section className="ag-card ec-glow ap-growth" aria-labelledby="growth-heading">
       <div className="ap-card-heading">
         <h2 id="growth-heading">Рост аудитории</h2>
-        <span>{period === 'all' ? 'за всё время' : `за ${period} дней`}</span>
+        {period !== 'all' && <span>последние {period} дней</span>}
       </div>
       {!first || !last ? (
         <p className="ap-insight-empty">Нет замеров подписчиков за этот период.</p>
       ) : points.length === 1 ? (
         <div className="ap-growth-summary">
           <strong className="ap-growth-change">{fmt(first.followers)}</strong>
-          <span className="ap-insight-empty">Для графика роста нужен второй сбор.</span>
+          <span className="ap-insight-empty">
+            Подписчиков при первом замере · {measurementDate(first.date)}
+          </span>
         </div>
       ) : (
         <>
@@ -42,6 +44,7 @@ export function AudienceGrowth({
                 value={last.followers - first.followers}
                 format={signedFmt}
                 duration={0.5}
+                animateOnMount={false}
               />
             </strong>
             {first.followers > 0 && (
@@ -51,18 +54,30 @@ export function AudienceGrowth({
               />
             )}
           </div>
-          <dl className="ap-growth-range">
-            <div>
-              <dt>Первый замер</dt>
-              <dd>{fmt(first.followers)}</dd>
-            </div>
-            <div>
-              <dt>Последний замер</dt>
-              <dd>{fmt(last.followers)}</dd>
-            </div>
-          </dl>
+          <p className="ap-growth-range">
+            <span title={measurementDate(first.date)}>
+              <span className="sr-only">Первый замер </span>
+              <AnimatedNumber
+                value={first.followers}
+                format={fmt}
+                duration={0.38}
+                animateOnMount={false}
+              />
+            </span>
+            <span className="ap-growth-range-arrow" aria-hidden="true">
+              →
+            </span>
+            <span title={measurementDate(last.date)}>
+              <span className="sr-only">Последний замер </span>
+              <AnimatedNumber
+                value={last.followers}
+                format={fmt}
+                duration={0.38}
+                animateOnMount={false}
+              />
+            </span>
+          </p>
           <TrendPlot
-            key={period}
             points={points}
             shown={tiktokSeries}
             metric="followers"

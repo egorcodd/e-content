@@ -1,8 +1,9 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   ArrowCounterClockwiseIcon,
   ArrowRightIcon,
+  CaretDownIcon,
   CheckIcon,
   DownloadSimpleIcon,
   FileTextIcon,
@@ -11,6 +12,7 @@ import {
   XIcon,
 } from '@phosphor-icons/react';
 import {
+  AnimatedNumber,
   downloadText,
   SectionHeading,
   Segment,
@@ -27,6 +29,10 @@ import './workshop.css';
 import { preloadWorkshopScene } from './scene-loader';
 import { WorkshopSources } from '../sources/WorkshopSources';
 import { useCollectionRun } from '../collection/useCollectionRun';
+import { LocalApiError } from '../collection/api';
+import { AiIdeas } from '../collection/AiIdeas';
+import type { SourceProgress } from '../collection/contracts';
+import { SiteLink } from '../../app/navigation';
 
 const IsoView = lazy(preloadWorkshopScene);
 let webgl: boolean | undefined;
@@ -74,9 +80,14 @@ const variants = [
   { id: 'mesh', label: 'Сетка' },
   { id: 'smoke', label: 'Дымка' },
 ];
+const runCounters = [
+  ['posts', 'Публикации'],
+  ['comments', 'Комментарии'],
+  ['ideas', 'Идеи'],
+] as const;
 const workspaceSteps: Record<string, readonly string[]> = {
   telegram: ['Доступ к каналам', 'Публикации за период', 'Сохранение без повторов', 'telegram.md'],
-  tiktok: ['Публичные ролики', 'Комментарии и ответы', 'Сохранение исходных реплик', 'tiktok.md'],
+  tiktok: ['Публичные ролики', 'Комментарии и ответы', 'Сохранение данных', 'Отчёт сбора'],
   comments: [
     'Обсуждения публикаций',
     'Ответы и вложенные ветки',
@@ -97,6 +108,68 @@ const workspaceSteps: Record<string, readonly string[]> = {
     'materials.md',
   ],
 };
+
+function tiktokNotice(source?: SourceProgress) {
+  if (source?.stopCode?.startsWith('APIFY_') && source.reason) return source.reason;
+  switch (source?.stopCode) {
+    case 'TIKTOK_SAMPLE_PAUSED':
+      return 'TikTok временно приостановил выдачу.';
+    case 'TIKTOK_SAVED_SAMPLE':
+      return 'TikTok отложил обновление. Использована доступная выборка.';
+    case 'TIKTOK_SAMPLE_TIME':
+      return 'Время обновления истекло. Непрочитанные страницы остались в очереди.';
+    case 'TIKTOK_BLOCKED':
+      return source.reason?.startsWith('TikTok ограничил доступ') ||
+        source.reason?.startsWith('TikTok запросил проверку')
+        ? 'TikTok ограничил доступ к данным.'
+        : 'TikTok ограничил запросы.';
+    case 'TIKTOK_TIMEOUT':
+    case 'TIKTOK_UNAVAILABLE':
+      return 'TikTok временно недоступен.';
+    case 'TIKTOK_LOGIN_REQUIRED':
+    case 'TIKTOK_AGE_REQUIRED':
+      return 'TikTok ограничил доступ к комментариям.';
+    case 'TIKTOK_TOTAL_COMMENT_LIMIT':
+      return 'Достигнут общий лимит комментариев.';
+    case 'TIKTOK_TOTAL_VIDEO_LIMIT':
+      return 'Достигнут общий лимит публикаций.';
+    case 'REQUEST_BUDGET':
+      return 'Достигнут общий лимит запросов.';
+    case 'TIKTOK_VIDEO_LIST_INCOMPLETE':
+      return 'TikTok выдал часть списка роликов.';
+    case 'TIKTOK_REPLIES_INCOMPLETE':
+      return 'TikTok выдал часть ответов.';
+    case 'TIKTOK_DEFERRED':
+    case 'TIKTOK_RETRY_EXHAUSTED':
+      return 'TikTok не вернул часть комментариев. Место остановки сохранено.';
+    case 'TIKTOK_RETRY_TOO_LATE':
+      return 'Ожидание TikTok превышает сутки. Место остановки сохранено.';
+    case 'TIKTOK_DEFERRED_REPLIES':
+      return 'Оставшиеся ответы цех проверит при следующем запуске.';
+    case 'TIKTOK_COMMENTS_EMPTY':
+      return 'TikTok не выдал комментарии к одному из роликов.';
+    default:
+      return source?.status === 'limited'
+        ? 'Собрана часть данных TikTok.'
+        : 'TikTok не выдал все данные.';
+  }
+}
+
+function RunReports({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
+  return (
+    <div className="wg-events">
+      <button type="button" className="wg-events-toggle" aria-expanded={open} aria-controls={bodyId}
+        onClick={() => setOpen(value => !value)}>
+        Отчёты запуска<CaretDownIcon size={15} aria-hidden="true" />
+      </button>
+      <div id={bodyId} className="wg-events-body" inert={!open}>
+        <div>{children}</div>
+      </div>
+    </div>
+  );
+}
 
 export function Workshop({
   notify,
@@ -133,8 +206,17 @@ export function Workshop({
   const [halted, setHalted] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
   const [stationSteps, setStationSteps] = useState<Record<string, number>>({});
-  const [repeat, setRepeat] = useState<boolean | null>(null);
-  const pendingRepeat = useRef<boolean | null>(null);
+  const [repeat, setRepeat] = useState<{
+    all: boolean;
+    stationId: string | null;
+    scope: string;
+  } | null>(null);
+  const pendingRepeat = useRef<typeof repeat>(null);
+  const [actionIssue, setActionIssue] = useState<{
+    scope: string;
+    message: string;
+    settings?: boolean;
+  } | null>(null);
   const panelVisible = useRef(false);
   const followRun = useRef(true);
   const [transfer, setTransfer] = useState<WorkshopTransfer | null>(null);
@@ -155,7 +237,16 @@ export function Workshop({
   useEffect(() => {
     if (!workspace) return;
     const real = collection.run;
-    if (!real) return;
+    if (!real) {
+      if (observed.current) {
+        observed.current = null;
+        clearTimeout(deliveryTimer.current);
+        setDone([]); setEvents([]); setStationSteps({}); setReceivedFrom([]);
+        setActive(null); activeRef.current = null; setStep(-1); setRunning(false);
+        setHalted(null); setBatch([]); setBatchArrivals([]); setTransfer(null); setArrival(null);
+      }
+      return;
+    }
     const previous = observed.current;
     const newlyDone =
       previous?.id === real.id
@@ -193,8 +284,16 @@ export function Workshop({
         setBatchArrivals(deliveries.map((edge) => ({ ...edge, receivedAt: performance.now() })));
       }, 1100);
     }
-    if (previous?.id === real.id && previous.status === 'running' && real.status !== 'running')
-      notify(real.status === 'completed' ? 'Сбор завершён' : (real.error ?? 'Сбор остановлен'));
+    if (previous?.id === real.id && previous.status === 'running' && real.status !== 'running') {
+      const messages = {
+        completed: 'Сбор завершён',
+        partial: 'Сбор завершён частично',
+        cancelled: 'Сбор остановлен',
+        failed: 'Не удалось завершить сбор',
+        interrupted: 'Сбор прерван',
+      };
+      notify(messages[real.status]);
+    }
   }, [workspace, collection.run]);
   useEffect(() => () => control.current?.abort(), []);
   useEffect(() => {
@@ -206,13 +305,15 @@ export function Workshop({
       if (!panel.current?.contains(document.activeElement))
         panel.current?.focus({ preventScroll: true });
     });
-  function stop() {
+  function stop(scope = 'toolbar') {
     if (workspace) {
-      void collection
-        .cancel()
-        .catch((error) =>
-          notify(error instanceof Error ? error.message : 'Не удалось остановить сбор.'),
-        );
+      setActionIssue(null);
+      void collection.cancel().catch((error) =>
+        setActionIssue({
+          scope,
+          message: error instanceof LocalApiError ? error.message : 'Не удалось остановить сбор.',
+        }),
+      );
       return;
     }
     control.current?.abort();
@@ -227,12 +328,14 @@ export function Workshop({
     setBatchArrivals([]);
   }
   function close() {
+    setActionIssue(null);
     panelVisible.current = false;
     followRun.current = false;
     setSelected(null);
     previous.current?.focus({ preventScroll: true });
   }
   function choose(id: string) {
+    setActionIssue(null);
     panelVisible.current = true;
     followRun.current = false;
     previous.current = document.activeElement as HTMLElement;
@@ -240,6 +343,9 @@ export function Workshop({
     focusPanel();
   }
   const panelOpen = !!selected;
+  const canResumeTikTok = workspace && collection.run?.canResumeTikTok === true && !running;
+  const resumesTikTok = (all: boolean, stationId: string | null) =>
+    canResumeTikTok && !all && stationId === 'tiktok' && collection.run?.ideaMode === undefined;
   useEffect(() => {
     if (!enabled) {
       panelVisible.current = false;
@@ -261,21 +367,29 @@ export function Workshop({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [panelOpen, enabled]);
-  async function run(all: boolean) {
+  async function run(all: boolean, stationId: string | null, scope: string, threadsOnly = false) {
     if (workspace) {
+      setActionIssue(null);
       try {
-        await collection.start(all ? 'cycle' : (selected ?? 'cycle'));
+        if (resumesTikTok(all, stationId)) await collection.resumeTikTok();
+        else await collection.start(all ? 'cycle' : (stationId ?? 'cycle'), threadsOnly);
         setCycle(all);
         panelVisible.current = true;
         followRun.current = true;
         if (!selected) setSelected(all ? 'orchestrator' : 'telegram');
       } catch (error) {
-        notify(error instanceof Error ? error.message : 'Не удалось запустить сбор.');
+        setActionIssue({
+          scope,
+          message: error instanceof LocalApiError ? error.message : 'Не удалось запустить сбор.',
+          settings:
+            error instanceof LocalApiError &&
+            ['NO_SOURCES', 'PLAN_BLOCKED', 'CONFIGURATION'].includes(error.code),
+        });
       }
       return;
     }
-    const coreOnly = selected === 'orchestrator' && halted === 'orchestrator' && !all;
-    if (version === 'hub' && selected === 'orchestrator' && !coreOnly) all = true;
+    const coreOnly = stationId === 'orchestrator' && halted === 'orchestrator' && !all;
+    if (version === 'hub' && stationId === 'orchestrator' && !coreOnly) all = true;
     if (all) {
       previous.current = document.activeElement as HTMLElement;
       if (!selected) focusPanel();
@@ -289,7 +403,7 @@ export function Workshop({
     setCycle(all);
 
     setHalted(null);
-    const nodes = coreOnly ? [] : all ? stations : stations.filter((s) => s.id === selected);
+    const nodes = coreOnly ? [] : all ? stations : stations.filter((s) => s.id === stationId);
     setDone((old) =>
       old.filter((id) => id !== 'orchestrator' && !nodes.some((node) => node.id === id)),
     );
@@ -394,8 +508,17 @@ export function Workshop({
   const states: Record<string, StatusKind> = {};
   const progress: Record<string, number> = {};
   const partialRun = workspace && collection.run?.status === 'partial';
+  const tikTokSources = Object.values(collection.run?.sources ?? {}).filter(source => source.platform === 'tiktok');
+  const emptyTikTokPause = workspace && collection.run?.status === 'completed' &&
+    tikTokSources.some(source => source.stopCode === 'TIKTOK_SAMPLE_PAUSED') &&
+    tikTokSources.every(source => source.comments === 0);
+  const emptyCycle = emptyTikTokPause && collection.run?.skipped.includes('ideas') &&
+    collection.run?.skipped.includes('analytics') && collection.run?.skipped.includes('telegram');
+  const emptyPanel = (selected === 'tiktok' && emptyTikTokPause) || (selected === 'orchestrator' && emptyCycle);
   for (const s of items) {
     states[s.id] =
+      (emptyTikTokPause && (s.id === 'tiktok' || s.id === 'comments' && collection.run?.skipped.includes('telegram'))) ||
+      (emptyCycle && s.id === 'orchestrator') ||
       (partialRun && s.id === 'orchestrator') ||
       (workspace && collection.run?.failures?.[s.id] && active !== s.id)
         ? 'pause'
@@ -435,40 +558,133 @@ export function Workshop({
     );
   const panelState: StatusKind = selected ? states[selected] : 'wait';
   const corePartial = partialRun && selected === 'orchestrator';
+  const tiktokFailure = collection.run?.failures?.tiktok;
+  const panelError =
+    selected &&
+    (collection.run?.failures?.[selected] ||
+      (selected === 'orchestrator' && collection.run?.error));
+  const panelSources = Object.entries(collection.run?.sources ?? {}).filter(([, source]) => {
+    if (selected === 'tiktok') return source.platform === 'tiktok';
+    if (selected !== 'orchestrator') return false;
+    if (emptyCycle && source.platform === 'tiktok') return true;
+    if (corePartial) return source.status !== 'completed';
+    return (
+      collection.run?.status === 'running' &&
+      source.platform === 'tiktok' &&
+      source.status === 'reading' &&
+      !!source.retry
+    );
+  });
+  const deferredTikTok = panelSources.some(
+    ([, source]) =>
+      source.platform === 'tiktok' &&
+      source.status === 'limited' &&
+      ['TIKTOK_DEFERRED', 'TIKTOK_RETRY_EXHAUSTED', 'TIKTOK_RETRY_TOO_LATE'].includes(
+        source.stopCode ?? '',
+      ),
+  );
+  const tiktokProblem =
+    workspace &&
+    tiktokFailure &&
+    (selected === 'tiktok' || (corePartial && !collection.run?.failures?.telegram));
+  const issueSource = panelSources.find(([, source]) =>
+    source.platform === 'tiktok' && !['completed', 'reading'].includes(source.status))?.[1];
+  const emptyApifyResult = !!tiktokProblem && issueSource?.stopCode?.startsWith('APIFY_') &&
+    !issueSource.receivedComments;
   const panelIssue =
     workspace &&
     (collection.error ||
-      (selected &&
-        (collection.run?.failures?.[selected] ||
-          (selected === 'orchestrator' && collection.run?.error))));
-  const reportEvents = events.filter((event) => event !== panelIssue);
-  const panelSources = Object.entries(collection.run?.sources ?? {}).filter(([, source]) =>
-    selected === 'tiktok'
-      ? source.platform === 'tiktok'
-      : corePartial && source.status !== 'completed',
-  );
+      (tiktokProblem
+        ? tiktokNotice(issueSource)
+        : panelError));
+  const currentRun = collection.run;
+  const runHasRecords = !!currentRun && currentRun.counts.posts + currentRun.counts.comments > 0;
+  const reportEvents = events.filter((event) => event !== panelError && event !== tiktokFailure);
+  const tiktokCommentRequest =
+    selected === 'tiktok' &&
+    panelSources.some(([, source]) =>
+      ['comments', 'replies'].includes(source.failedRequest?.stage ?? ''),
+    );
   const panelStep =
     selected && done.includes(selected)
       ? (station?.steps.length ?? 0)
-      : selected === active
-        ? step
-        : selected
-          ? (stationSteps[selected] ?? -1)
-          : -1;
+      : tiktokCommentRequest
+        ? 1
+        : selected === active
+          ? step
+          : selected
+            ? (stationSteps[selected] ?? -1)
+            : -1;
   const panelRunning = panelState === 'run';
-  const panelControlsRun = running && (panelRunning || (followRun.current && cycle));
-  const requestRun = (all: boolean) => {
+  const panelRetry =
+    workspace &&
+    currentRun?.status === 'running' &&
+    panelSources.some(([, source]) => source.status === 'reading' && source.retry);
+  const tiktokCommentsSaved =
+    selected === 'tiktok' && panelSources.some(([, source]) => source.comments > 0);
+  const panelControlsRun = running && (panelRunning || panelRetry || (followRun.current && cycle));
+  const requestRun = (all: boolean, scope = selected ?? 'toolbar') => {
+    if (running || repeat || (workspace && (collection.loading || collection.pending))) return;
+    const stationId = scope === 'toolbar' ? null : selected;
+    if (resumesTikTok(all, stationId)) {
+      void run(all, stationId, scope);
+      return;
+    }
+    if (workspace && (stationId === 'tiktok' || stationId === 'telegram' || all)) {
+      void run(all, stationId, scope);
+      return;
+    }
     if (
       (all && done.length > 0) ||
-      (selected && done.includes(selected)) ||
-      (workspace &&
-        (selected === 'telegram' || selected === 'tiktok') &&
-        !!collection.run &&
-        collection.run.counts.posts + collection.run.counts.comments > 0)
+      (stationId && done.includes(stationId)) ||
+      (workspace && (stationId === 'telegram' || stationId === 'tiktok') && runHasRecords)
     )
-      setRepeat(all);
-    else void run(all);
+      setRepeat({ all, stationId, scope });
+    else void run(all, stationId, scope);
   };
+  const showActionIssue = (scope: string) =>
+    actionIssue?.scope === scope && (
+      <div className="wg-action-error" role="alert">
+        <span>{actionIssue.message}</span>
+        {actionIssue.settings && openSources && (
+          <button
+            className="ec-text"
+            onClick={() => {
+              close();
+              openSources(scope === 'telegram' ? 'telegram' : 'tiktok');
+            }}
+          >
+            Настроить источники
+          </button>
+        )}
+      </div>
+    );
+  const reportRows = (
+      <AnimatePresence initial={false}>
+        {[...new Set(reportEvents)].map((event) => (
+          <motion.div
+            key={event}
+            className="wg-event-row"
+            layout
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ type: 'spring', bounce: 0.2, duration: 0.45 }}
+          >
+            <FileTextIcon size={15} />
+            {event}
+            {workspace && event === collection.run?.error ? (
+              <StatusIcon kind="err" size={13} />
+            ) : (
+              <CheckIcon size={13} weight="bold" />
+            )}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+  );
+  const panelReport = reportEvents.length > 0 && (workspace
+    ? <RunReports key={selected + (currentRun?.id ?? '')}>{reportRows}</RunReports>
+    : <div className="wg-events"><h4>Материалы</h4>{reportRows}</div>
+  );
   return (
     <section id="workshop" className={`wg-section ${workspace ? 'wg-workspace' : 'ec-section'}`}>
       {!workspace && (
@@ -518,13 +734,20 @@ export function Workshop({
           <button
             className={'ec-button ec-white ' + (running ? 'is-running' : '')}
             disabled={workspace && (collection.loading || collection.pending)}
-            onClick={() => (running ? stop() : requestRun(true))}
+            onClick={() => (running ? stop() : requestRun(true, 'toolbar'))}
           >
             {running ? <StopIcon size={14} weight="fill" /> : <PlayIcon size={14} weight="fill" />}
-            {running ? 'Остановить цикл' : 'Запустить весь цикл'}
+            {workspace && collection.pending
+              ? running
+                ? 'Останавливаем…'
+                : 'Запускаем…'
+              : running
+                ? 'Остановить цикл'
+                : 'Запустить весь цикл'}
           </button>
         </div>
       </div>
+      {showActionIssue('toolbar')}
       <div className="wg-flow-status" role="status" aria-live="polite" aria-atomic="true">
         {batch.length > 0 ? (
           <>
@@ -622,161 +845,300 @@ export function Workshop({
                 <XIcon size={20} />
               </button>
             </div>
-            <div className="wg-panel-title">
-              <span className="wg-panel-icon">
-                <station.Icon size={24} weight="duotone" />
-              </span>
-              <div>
-                <h3>{station.name}</h3>
-                <small>{station.sub}</small>
+            <div className="wg-panel-scroll">
+              <div className="wg-panel-title">
+                <span className="wg-panel-icon">
+                  <station.Icon size={24} weight="duotone" />
+                </span>
+                <div>
+                  <h3>{station.name}</h3>
+                  <small>{station.sub}</small>
+                </div>
               </div>
-            </div>
-            {workspace && collection.run && (
-              <div className="wg-real-counts" role="status">
-                <span>
-                  Публикации <b>{collection.run.counts.posts}</b>
-                </span>
-                <span>
-                  Комментарии <b>{collection.run.counts.comments}</b>
-                </span>
-                <span>
-                  Идеи <b>{collection.run.counts.ideas}</b>
-                </span>
-              </div>
-            )}
-            {panelIssue && (
-              <p className="wg-real-error" data-partial={partialRun || undefined} role="status">
-                {panelIssue}
-              </p>
-            )}
-            {workspace && openSources && (station.id === 'telegram' || station.id === 'tiktok') && (
-              <WorkshopSources
-                platform={station.id}
-                open={() => {
-                  close();
-                  openSources(station.id as 'telegram' | 'tiktok');
-                }}
-              />
-            )}
-            {workspace &&
-              panelSources.map(([id, source]) => (
-                <div className="wg-configured-sources" key={id}>
-                  <div>
-                    <FileTextIcon size={15} />
-                    <span>{source.platform === 'tiktok' ? 'Сбор TikTok' : 'Сбор Telegram'}</span>
-                  </div>
-                  <ul>
-                    {source.videos && (
-                      <li>
-                        Пройдено роликов: {source.videos.processed} из {source.videos.selected}
-                      </li>
+              {workspace && currentRun && station.id !== 'tiktok' && (
+                <div key={currentRun.id} className="wg-real-counts" role="status">
+                  {currentRun.previousTikTokRun && <small>Последний основной сбор</small>}
+                  {runCounters.map(([key, label]) => {
+                    const value = (currentRun.previousTikTokRun?.counts ?? currentRun.counts)[key];
+                    return (
+                      <span key={key}>
+                        {label}{' '}
+                        <b>
+                          <span className="sr-only">{value}</span>
+                          <span aria-hidden="true">
+                            <AnimatedNumber value={value} duration={0.45} animateOnMount={false} />
+                          </span>
+                        </b>
+                      </span>
+                    );
+                  })}
+                  {station.id === 'orchestrator' && currentRun.aiCostUsd !== undefined && (
+                    <div className="wg-analysis-cost" title="Расчёт по тарифу модели OpenAI за этот запуск">
+                      <span>Расход OpenAI за запуск</span>
+                      <strong>{currentRun.aiCostUsd > 0 ? '≈ ' : ''}{currentRun.aiCostUsd.toLocaleString('ru-RU', {
+                        style: 'currency', currency: 'USD', minimumFractionDigits: 2,
+                        maximumFractionDigits: currentRun.aiCostUsd > 0 && currentRun.aiCostUsd < 0.01 ? 5 : 2,
+                      })}</strong>
+                    </div>
+                  )}
+                </div>
+              )}
+              {panelIssue && (
+                <motion.p
+                  key={panelIssue}
+                  initial={reduced ? false : { opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: reduced ? 0 : 0.18 }}
+                  className="wg-real-error"
+                  data-partial={(partialRun && !emptyApifyResult && !collection.error) || undefined}
+                  role="status"
+                >
+                  <span>{panelIssue}</span>
+                  {tiktokProblem && !emptyApifyResult && !deferredTikTok && runHasRecords && !collection.error && (
+                    <span>Собранные данные сохранены.</span>
+                  )}
+                </motion.p>
+              )}
+              {workspace &&
+                openSources &&
+                (station.id === 'telegram' || station.id === 'tiktok') && (
+                  <WorkshopSources
+                    platform={station.id}
+                    open={() => {
+                      close();
+                      openSources(station.id as 'telegram' | 'tiktok');
+                    }}
+                  />
+                )}
+              {workspace &&
+                panelSources.map(([id, source]) => source.provider === 'apify' ? (
+                  <section className="wg-sample" key={id} aria-label="Выборка TikTok">
+                    <header>
+                      <h4>Выборка TikTok</h4>
+                      <a href={source.url} target="_blank" rel="noreferrer" aria-label="Открыть источник TikTok">Источник ↗</a>
+                    </header>
+                    <dl>
+                      <div><dt>Выбрано роликов</dt><dd>{source.videos?.selected ?? '—'}</dd></div>
+                      <div><dt>Получено реплик</dt><dd>{(source.receivedComments ?? 0).toLocaleString('ru-RU')}</dd></div>
+                      <div><dt>После отбора</dt><dd>{source.comments.toLocaleString('ru-RU')}</dd></div>
+                      {source.sampleVideos !== undefined && source.comments > 0 && (
+                        <div><dt>Роликов в отборе</dt><dd>{source.sampleVideos}</dd></div>
+                      )}
+                    </dl>
+                    {source.status === 'completed' && source.comments === 0 && (
+                      <p role="status">{source.receivedComments
+                        ? 'Новых реплик для разбора по этим настройкам нет.'
+                        : 'В выборке нет комментариев.'}</p>
                     )}
-                    {source.failedRequest && (
-                      <li>
-                        Остановка на этапе «
-                        {
-                          {
-                            profile: 'профиль',
-                            videos: 'список роликов',
-                            video: 'данные ролика',
-                            comments: 'комментарии',
-                            replies: 'ответы',
-                          }[source.failedRequest.stage]
-                        }
-                        »
-                        {source.failedRequest.videoNumber &&
-                          ` · ролик ${source.failedRequest.videoNumber}`}
-                        {source.failedRequest.upstreamStatus &&
-                          ` · HTTP ${source.failedRequest.upstreamStatus}`}
-                      </li>
-                    )}
-                    <li>Сохранено комментариев: {source.comments}</li>
-                    {source.status === 'completed' &&
-                      source.stopCode === 'TIKTOK_PER_VIDEO_LIMIT' &&
-                      source.limits && (
+                  </section>
+                ) : (
+                  <div className="wg-configured-sources" key={id}>
+                    <div>
+                      <FileTextIcon size={15} />
+                      <span>{source.platform === 'tiktok' ? 'Сбор TikTok' : 'Сбор Telegram'}</span>
+                    </div>
+                    <ul>
+                      {source.threads ? (
                         <li>
-                          Лимит {source.limits.commentsPerVideo} комментариев достигнут на{' '}
-                          {source.limits.limitedVideos} роликах
+                          Дочитано веток: {source.threads.completed} из {source.threads.selected}
+                        </li>
+                      ) : (
+                        source.videos && source.stopCode === 'TIKTOK_SAMPLE_PAUSED' && source.comments === 0 ? (
+                          <li>Роликов в выборке: {source.videos.selected}</li>
+                        ) : source.videos && (
+                          <li>
+                            {source.platform === 'tiktok' && currentRun?.tiktokCollectionVersion
+                              ? 'Основные комментарии по роликам'
+                              : source.platform === 'tiktok' && (deferredTikTok || source.retry)
+                              ? 'Ролики с завершённым сбором'
+                              : 'Пройдено роликов'}
+                            : {source.videos.processed} из {source.videos.selected}
+                          </li>
+                        )
+                      )}
+                      {source.platform === 'tiktok' && currentRun?.tiktokCollectionVersion &&
+                        !currentRun.threadsOnly && currentRun.status === 'running' &&
+                        source.status === 'reading' && source.videos && source.videos.selected > 0 &&
+                        source.videos.processed === source.videos.selected &&
+                        collection.pendingTikTokThreads !== null && collection.pendingTikTokThreads > 0 && (
+                          <li>Веток с ответами в очереди профиля: {collection.pendingTikTokThreads}</li>
+                        )}
+                      {source.backlogVideos ? (
+                        <li>Из предыдущих запусков: {source.backlogVideos} рол.</li>
+                      ) : null}
+                      <li>
+                        {currentRun?.threadsOnly
+                          ? 'Добавлено комментариев'
+                          : 'Сохранено комментариев'}
+                        : {source.comments}
+                      </li>
+                      {currentRun?.threadsOnly && (
+                        <li>Идей с новыми основаниями: {currentRun.counts.ideas}</li>
+                      )}
+                      {!!source.reusedComments && <li>Из предыдущих сборов: {source.reusedComments}</li>}
+                      {source.platform === 'tiktok' && currentRun?.followUp && (
+                        <li role="status">
+                          {{manual: [source.failedRequest?.responseIssue === 'access'
+                            ? 'TikTok отклонил запрос публичного сборщика.'
+                            : source.stopCode === 'TIKTOK_SAMPLE_PAUSED'
+                            ? source.failedRequest?.videoNumber
+                              ? `TikTok приостановил выдачу при чтении ролика №${source.failedRequest.videoNumber}.`
+                              : 'TikTok приостановил выдачу комментариев.' :
+                            source.stopCode === 'TIKTOK_SAMPLE_TIME' ? 'Прошло пять минут.' : '',
+                            'Место чтения сохранено до следующего запуска.'].filter(Boolean).join(' '), queued: 'Дочитывание запланировано', reading: 'Дочитываем обсуждения',
+                            complete: 'Дочитывание завершено', limited: 'Дочитывание завершено частично'}[currentRun.followUp.state]}
+                          {currentRun.followUp.state === 'queued' && ' · ' + new Date(currentRun.followUp.at).toLocaleTimeString('ru-RU')}
+                          {currentRun.followUp.state === 'limited' && currentRun.followUp.reason && ' · ' + currentRun.followUp.reason}
                         </li>
                       )}
-                    {source.receivedComments !== undefined &&
-                      source.receivedComments !== source.comments && (
-                        <li>Получено до фильтрации: {source.receivedComments}</li>
+                      {!!source.sampleVideos && <li>Роликов с комментариями в выборке: {source.sampleVideos}</li>}
+                      {source.platform === 'tiktok' && currentRun?.aiUsage && currentRun.followUp &&
+                        currentRun.followUp.sample < currentRun.counts.comments &&
+                        <li>К моменту разбора сохранено реплик: {currentRun.followUp.sample}. Позже добавлено ещё {currentRun.counts.comments - currentRun.followUp.sample}.</li>}
+                      {source.notices?.some(notice => notice.code === 'TIKTOK_SAVED_CATALOG') &&
+                        <li>Использован последний сохранённый список роликов профиля.</li>}
+                      {source.status === 'limited' &&
+                        source.stopCode === 'TIKTOK_SAMPLE_TIME' && !currentRun?.followUp && <li>Непрочитанные страницы оставлены в очереди.</li>}
+                      {!currentRun?.followUp && source.status === 'completed' &&
+                        source.stopCode === 'TIKTOK_DEFERRED_REPLIES' && (
+                          <li>Оставшиеся ответы цех проверит при следующем запуске.</li>
+                        )}
+                      {source.retry && source.status === 'reading' && (
+                        <li role="status">
+                          {(source.failedRequest?.responseIssue || source.retry.scope === 'discussions') && (
+                            <>
+                              {source.failedRequest?.responseIssue === 'access'
+                                ? 'TikTok отклонил запрос публичного сборщика.'
+                                : source.failedRequest?.responseIssue === 'empty'
+                                ? 'TikTok вернул пустой ответ на запрос страницы.'
+                                : source.failedRequest?.responseIssue === 'limited'
+                                  ? 'TikTok временно ограничил частоту запросов.'
+                                  : source.failedRequest?.responseIssue === 'overloaded'
+                                    ? 'TikTok сообщил о перегрузке.'
+                                    : 'TikTok временно не выдаёт комментарии к нескольким роликам.'}
+                              <br />
+                            </>
+                          )}
+                          Следующая попытка автоматически в{' '}
+                          <time dateTime={source.retry.at}>
+                            {new Date(source.retry.at).toLocaleTimeString('ru-RU', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                            })}
+                          </time>
+                        </li>
                       )}
-                    {source.expectedComments !== undefined && (
-                      <li>Счётчик TikTok: {source.expectedComments}</li>
-                    )}
-                  </ul>
-                  <a className="ec-text" href={source.url} target="_blank" rel="noreferrer">
-                    Открыть источник
-                    <ArrowRightIcon size={14} />
-                  </a>
-                </div>
-              ))}
-            <div className="wg-panel-source">
-              <FileTextIcon size={16} />
-              {station.steps.at(-1)}
-              <StatusBadge
-                kind={panelState}
-                label={
-                  corePartial
-                    ? 'Частичный результат'
-                    : panelState === 'done'
-                      ? 'Готово'
-                      : panelState === 'run'
-                        ? transfer
-                          ? 'Передача файла'
-                          : 'В работе'
-                        : panelState === 'pause'
-                          ? workspace && collection.run?.failures?.[station.id]
-                            ? 'Нужно внимание'
-                            : 'Пауза'
-                          : 'Ожидает запуска'
-                }
-              />
-            </div>
-            <ol className="wg-steps" aria-live="polite">
-              {station.steps.map((label, i) => {
-                const kind: StatusKind =
-                  panelStep > i
+                      {source.status === 'completed' &&
+                        source.stopCode === 'TIKTOK_PER_VIDEO_LIMIT' &&
+                        source.limits && (
+                          <li>
+                            Лимит {source.limits.commentsPerVideo} комментариев достигнут на{' '}
+                            {source.limits.limitedVideos} роликах
+                          </li>
+                        )}
+                    </ul>
+                    <a className="ec-text" href={source.url} target="_blank" rel="noreferrer">
+                      Открыть источник
+                      <ArrowRightIcon size={14} />
+                    </a>
+                  </div>
+                ))}
+              {workspace &&
+                (panelRetry || deferredTikTok) &&
+                currentRun &&
+                currentRun.counts.ideas > 0 && (
+                  <SiteLink
+                    className="ec-text wg-available-ideas"
+                    href="/materials?folder=video-ideas"
+                  >
+                    Открыть идеи видео
+                  </SiteLink>
+                )}
+              <div className="wg-panel-source">
+                <FileTextIcon size={16} />
+                {workspace && station.id === 'tiktok' ? 'Отчёт TikTok' : workspace && station.id === 'orchestrator' ? 'Отчёт запуска' : station.steps.at(-1)}
+                <StatusBadge
+                  kind={panelRetry ? 'pause' : panelState}
+                  label={
+                    emptyApifyResult && station.id === 'tiktok'
+                      ? 'Комментарии не получены'
+                      : emptyPanel
+                      ? 'Чтение комментариев приостановлено'
+                      : panelRetry
+                      ? 'Ожидание TikTok'
+                      : corePartial
+                        ? 'Частичный результат'
+                        : panelState === 'done'
+                          ? 'Готово'
+                          : panelState === 'run'
+                            ? transfer
+                              ? 'Передача файла'
+                              : 'В работе'
+                            : panelState === 'pause'
+                              ? workspace && tiktokProblem
+                                ? runHasRecords
+                                  ? 'Частичный результат'
+                                  : 'Сбор не завершён'
+                                : 'Пауза'
+                              : 'Ожидает запуска'
+                  }
+                />
+              </div>
+              <ol className="wg-steps" aria-live="polite">
+                {station.steps.map((label, i) => {
+                  const commentsPaused = selected === 'tiktok' && emptyTikTokPause && i === 1;
+                  const finished = panelStep > i && !commentsPaused;
+                  const current = commentsPaused || panelStep === i && !finished;
+                  const kind: StatusKind = finished
                     ? 'done'
-                    : panelStep === i
-                      ? panelRunning
+                    : current
+                      ? panelRunning && !panelRetry
                         ? 'run'
                         : 'pause'
                       : 'wait';
-                return (
-                  <li
-                    key={label}
-                    className={panelStep > i ? 'is-done' : panelStep === i ? 'is-current' : ''}
-                  >
-                    <span className="wg-step-icon">
-                      <StatusIcon kind={kind} size={18} key={kind} />
-                    </span>
-                    <div>
-                      {label}
-                      <small>
-                        {panelStep > i
-                          ? 'Завершено'
-                          : panelStep === i && panelRunning
-                            ? 'Выполняется…'
-                            : panelStep === i
-                              ? 'Остановлено'
-                              : 'Ожидание'}
-                      </small>
-                    </div>
-                    {panelStep === i && panelRunning && (
-                      <motion.i
-                        className="wg-step-scan"
-                        layoutId="wg-step-scan"
-                        transition={{ type: 'spring', bounce: 0.1, duration: 0.28 }}
-                      />
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
+                  return (
+                    <li key={label} className={finished ? 'is-done' : current ? 'is-current' : ''}>
+                      <span className="wg-step-icon">
+                        <StatusIcon kind={kind} size={18} key={kind} />
+                      </span>
+                      <div>
+                        {label}
+                        <small>
+                          {commentsPaused
+                            ? 'TikTok приостановил выдачу'
+                            : finished
+                            ? 'Завершено'
+                            : current && panelRetry
+                              ? 'Ждём следующей попытки'
+                              : current && panelRunning
+                                ? 'Выполняется…'
+                                : current
+                                  ? tiktokProblem && tiktokCommentsSaved
+                                    ? 'Собрано частично'
+                                    : 'Не завершено'
+                                  : 'Ожидание'}
+                        </small>
+                      </div>
+                      {current && panelRunning && !panelRetry && (
+                        <motion.i
+                          className="wg-step-scan"
+                          layoutId="wg-step-scan"
+                          transition={{ type: 'spring', bounce: 0.1, duration: 0.28 }}
+                        />
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+              {workspace && panelReport}
+            </div>
             <div className="wg-panel-actions">
+              {showActionIssue(station.id)}
+              {workspace && (station.id === 'ideas' || station.id === 'tiktok') &&
+                currentRun && !currentRun.ideaMode && currentRun.status !== 'running' && currentRun.counts.comments > 0 &&
+                Object.values(currentRun.sources ?? {}).some(source => source.platform === 'tiktok') &&
+                <AiIdeas key={currentRun.id} runId={currentRun.id} />}
               {workspace && panelState === 'done' && station.id === 'materials' && openMaterial && (
                 <button
                   className="ec-button ec-white"
@@ -809,8 +1171,8 @@ export function Workshop({
                   }
                   onClick={() =>
                     panelControlsRun
-                      ? stop()
-                      : requestRun(station.id === 'orchestrator' && halted !== station.id)
+                      ? stop(station.id)
+                      : requestRun(station.id === 'orchestrator' && (workspace || halted !== station.id))
                   }
                 >
                   {panelControlsRun ? (
@@ -826,17 +1188,23 @@ export function Workshop({
                         ? cycle
                           ? 'Остановить цикл'
                           : 'Остановить'
-                        : panelState === 'done' || corePartial
-                          ? 'Запустить заново'
-                          : panelState === 'pause'
-                            ? workspace
-                              ? station.id === 'telegram' || station.id === 'tiktok'
-                                ? 'Запустить заново'
-                                : 'Обработать сохранённое'
-                              : 'Продолжить участок'
-                            : station.id === 'orchestrator'
-                              ? 'Запустить весь цикл'
-                              : 'Запустить участок'}
+                        : resumesTikTok(false, station.id)
+                          ? 'Продолжить сбор'
+                          : workspace && station.id === 'orchestrator'
+                            ? 'Запустить весь цикл'
+                          : workspace && (station.id === 'tiktok' || station.id === 'telegram')
+                            ? 'Собрать идеи'
+                            : panelState === 'done' || corePartial
+                              ? 'Запустить заново'
+                              : panelState === 'pause'
+                                ? workspace
+                                  ? station.id === 'telegram' || station.id === 'tiktok'
+                                    ? 'Запустить заново'
+                                    : 'Обработать сохранённое'
+                                  : 'Продолжить участок'
+                                : station.id === 'orchestrator'
+                                  ? 'Запустить весь цикл'
+                                  : 'Запустить участок'}
                 </button>
               )}
               <AnimatePresence>
@@ -844,7 +1212,7 @@ export function Workshop({
                   (workspace &&
                     collection.run &&
                     collection.run.status !== 'running' &&
-                    collection.run.counts.posts + collection.run.counts.comments > 0)) && (
+                    runHasRecords)) && (
                   <motion.button
                     className="ec-button ec-glass"
                     initial={{ opacity: 0, y: 8 }}
@@ -871,38 +1239,16 @@ export function Workshop({
                 )}
               </AnimatePresence>
             </div>
-            {reportEvents.length > 0 && (
-              <div className="wg-events">
-                <h4>{workspace ? 'Отчёты запуска' : 'Материалы'}</h4>
-                <AnimatePresence initial={false}>
-                  {reportEvents.map((event) => (
-                    <motion.div
-                      key={event}
-                      layout
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ type: 'spring', bounce: 0.2, duration: 0.45 }}
-                    >
-                      <FileTextIcon size={15} />
-                      {event}
-                      {workspace && event === collection.run?.error ? (
-                        <StatusIcon kind="err" size={13} />
-                      ) : (
-                        <CheckIcon size={13} weight="bold" />
-                      )}
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
-            )}
+            {!workspace && panelReport}
           </motion.aside>
         )}
       </AnimatePresence>
       <AnimatePresence
         onExitComplete={() => {
-          const all = pendingRepeat.current;
+          const target = pendingRepeat.current;
           pendingRepeat.current = null;
-          if (all !== null) requestAnimationFrame(() => void run(all));
+          if (target)
+            requestAnimationFrame(() => void run(target.all, target.stationId, target.scope));
         }}
       >
         {repeat !== null && (

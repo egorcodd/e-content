@@ -38,6 +38,7 @@ export type TikTokComment = {
   id: string;
   videoId: string;
   parentId?: string;
+  threadId?: string;
   text: string;
   publishedAt: string | null;
   likes?: number;
@@ -86,12 +87,23 @@ export function parseVideo(input: unknown, requestedId?: string): TikTokVideo {
     },
   };
 }
-export function parseVideoPage(input: unknown, id: string): TikTokVideo | null {
+function videoPageItem(input: unknown, id: string) {
   const data = object(input),
     scope = object(data.__DEFAULT_SCOPE__),
     detail = object(scope['webapp.video-detail']);
-  const item = object(detail.itemInfo).itemStruct ?? object(data.ItemModule)[id];
+  return object(detail.itemInfo).itemStruct ?? object(data.ItemModule)[id];
+}
+export function parseVideoPage(input: unknown, id: string): TikTokVideo | null {
+  const item = videoPageItem(input, id);
   return item ? parseVideo(item, id) : null;
+}
+export function videoPageCover(input: unknown, id: string): string | undefined {
+  const item = object(videoPageItem(input, id));
+  if (item.id !== id) return;
+  const cover = object(item.video).cover;
+  const url = typeof cover === 'string' ? URL.parse(cover) : null;
+  if (url?.protocol === 'https:' && !url.username && !url.password && !url.port
+      && /(^|\.)tiktokcdn(?:-eu|-us)?\.com$/i.test(url.hostname)) return url.href;
 }
 function comment(input: unknown, videoId: string, parentId?: string): TikTokComment {
   const item = object(input);
@@ -141,8 +153,10 @@ export function parseComments(input: unknown, videoId: string, rootId?: string):
   for (const raw of data.comments) {
     const row = object(raw);
     if (Array.isArray(row.reply_comment))
-      for (const reply of row.reply_comment)
-        previews.push(comment(reply, videoId, tiktokId(row.cid)));
+      for (const reply of row.reply_comment) {
+        const threadId = tiktokId(row.cid);
+        previews.push({ ...comment(reply, videoId, threadId), threadId });
+      }
   }
   return { items, previews, cursor, hasMore, rootId };
 }

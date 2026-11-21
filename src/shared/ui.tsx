@@ -212,31 +212,34 @@ export function downloadText(name: string, text: string, type = 'text/markdown;c
 }
 
 const numberFormat = new Intl.NumberFormat('ru-RU');
-/** Counts up from 0 the first time it scrolls into view, then tweens between values. */
+/** Set animateOnMount to false to show the initial value immediately and animate updates. */
 export function AnimatedNumber({
   value,
   format = (n) => numberFormat.format(Math.round(n)),
   className,
   duration = 1.1,
   delay = 0,
+  animateOnMount = true,
 }: {
   value: number;
   format?: (n: number) => string;
   className?: string;
   duration?: number;
   delay?: number;
+  animateOnMount?: boolean;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
   const seen = useInView(ref, { once: true, margin: '-40px' });
   const reduced = useReducedMotion();
-  const current = useMotionValue(0);
+  const current = useMotionValue(animateOnMount ? 0 : value);
   const text = useTransform(current, format);
   useEffect(() => {
-    if (!seen) return;
+    if (animateOnMount && !seen) return;
     if (reduced) return current.set(value);
+    if (current.get() === value) return;
     const controls = animate(current, value, { duration, delay, ease: [0.16, 1, 0.3, 1] });
     return () => controls.stop();
-  }, [seen, value, reduced]);
+  }, [animateOnMount, seen, value, reduced, current, duration, delay]);
   return (
     <motion.span ref={ref} className={className} style={{ fontVariantNumeric: 'tabular-nums' }}>
       {text}

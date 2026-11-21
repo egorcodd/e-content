@@ -25,6 +25,7 @@ import {
   statusLabels,
 } from '../../features/materials/idea-model';
 import {
+  applyLibraryReset,
   deleteFolder,
   deleteMaterial,
   importMarkdown,
@@ -35,7 +36,7 @@ import {
   type Material,
 } from '../../features/materials/repository';
 import './materials.css';
-import { importIdeas } from '../../features/collection/import-ideas';
+import { importAiMaterials, importIdeas } from '../../features/collection/import-ideas';
 import { api } from '../../features/collection/api';
 import type { CollectionRun } from '../../features/collection/contracts';
 export { initializeLibrary as preloadMaterials } from '../../features/materials/repository';
@@ -46,13 +47,38 @@ const priorityOrder = { high: 0, normal: 1, low: 2 };
 export default function MaterialsPage({ notify }: { notify: (message: string) => void }) {
   const library = useLibrary();
   useEffect(() => {
-    const sync = () =>
-      void api<{ run: CollectionRun | null; ideaAnalysisVersion?: number }>('/collection/latest')
-        .then(({ run, ideaAnalysisVersion }) => run && importIdeas(run, ideaAnalysisVersion))
-        .catch(() => {});
-    sync();
+    let disposed = false;
+    let checking = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const sync = async () => {
+      if (checking || disposed) return;
+      checking = true;
+      clearTimeout(timer);
+      try {
+        const { run, libraryReset, ideaAnalysisVersion, aiMaterialsVersion } = await api<{
+          run: CollectionRun | null;
+          libraryReset?: string | null;
+          ideaAnalysisVersion?: number;
+          aiMaterialsVersion?: string | null;
+        }>('/collection/latest');
+        if (disposed) return;
+        await applyLibraryReset(libraryReset);
+        if (run) await importIdeas(run, ideaAnalysisVersion);
+        await importAiMaterials(aiMaterialsVersion);
+        if (!disposed) timer = setTimeout(sync, run?.status === 'running' ? 3000 : 10000);
+      } catch {
+        if (!disposed) timer = setTimeout(sync, 15000);
+      } finally {
+        checking = false;
+      }
+    };
+    void sync();
     window.addEventListener('focus', sync);
-    return () => window.removeEventListener('focus', sync);
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+      window.removeEventListener('focus', sync);
+    };
   }, []);
   const pageElement = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {

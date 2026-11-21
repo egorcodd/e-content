@@ -4,13 +4,14 @@ import type {
   CatalogVideo,
   TikTokCatalogScan,
 } from '../src/features/analytics/contracts.ts';
-import { sumCounters } from '../src/features/analytics/counters.ts';
+import { accumulateVideoGrowth, catalogChange, catalogDifferences, sumCounters, videoGrowthMetrics } from '../src/features/analytics/counters.ts';
 import { AppError } from './errors.ts';
 import type { LocalStore } from './store.ts';
 import type { NativeTikTokSource } from './tiktok/native-source.ts';
 
 export class TikTokAnalytics {
   private current?: { control: AbortController; task: Promise<void> };
+  private changes = new Map<string, ReturnType<typeof catalogChange>>();
 
   constructor(
     private readonly store: LocalStore,
@@ -44,6 +45,21 @@ export class TikTokAnalytics {
 
   get busy() {
     return this.current !== undefined;
+  }
+  async refresh(signal: AbortSignal) {
+    signal.throwIfAborted();
+    this.start();
+    const current = this.current!;
+    const abort = () => current.control.abort();
+    signal.addEventListener('abort', abort, {once: true});
+    try {
+      await current.task;
+      signal.throwIfAborted();
+      const scan = this.history().scan;
+      if (scan?.status !== 'complete') throw new Error(scan?.error ?? 'Статистика TikTok недоступна.');
+    } finally {
+      signal.removeEventListener('abort', abort);
+    }
   }
 
   private save(profileId: string, scan: TikTokCatalogScan) {
@@ -79,14 +95,25 @@ export class TikTokAnalytics {
       handle: account.handle,
       scan,
       catalog: complete.at(-1) ?? (scan?.status === 'partial' ? scan : undefined),
-      tiktok: complete.map((item) => ({
+      tiktok: complete.map((item, index) => ({
         id: item.id,
         date: item.finishedAt!,
         videos: item.videos,
         followers: item.followers,
         counters: item.counters!,
+        change: index ? this.interval(complete[index - 1], item) : undefined,
       })),
     };
+  }
+
+  private interval(previous: TikTokCatalogScan, current: TikTokCatalogScan) {
+    const key = previous.id + '/' + current.id;
+    let change = this.changes.get(key);
+    if (!change) {
+      change = catalogChange(this.catalog(previous.id), this.catalog(current.id), previous.finishedAt!);
+      this.changes.set(key, change);
+    }
+    return change;
   }
 
   catalog(id: string): CatalogVideo[] {
@@ -102,6 +129,43 @@ export class TikTokAnalytics {
       )
       .all(id, profile.id)
       .map((row) => JSON.parse(row.body as string) as CatalogVideo);
+  }
+
+  videoGrowth(from: string, to: string): CatalogVideo[] {
+    const profile = this.source?.state().account;
+    if (!profile) return [];
+    const scans = this.store.db.prepare(`
+      SELECT id, json_extract(body, '$.finishedAt') AS date FROM tiktok_catalog_scans
+      WHERE profile_id = ? AND status = 'complete'
+        AND started_at >= (SELECT started_at FROM tiktok_catalog_scans WHERE id = ?)
+        AND started_at <= (SELECT started_at FROM tiktok_catalog_scans WHERE id = ?)
+      ORDER BY started_at
+    `).all(profile.id, from, to) as { id: string; date: string }[];
+    if (scans.length < 2 || scans[0].id !== from || scans.at(-1)?.id !== to) return [];
+
+    const totals = new Map<string, CatalogVideo>();
+    let previous = this.catalog(from);
+    for (let i = 1; i < scans.length; i++) {
+      const current = this.catalog(scans[i].id);
+      const { changes } = catalogDifferences(previous, current, scans[i - 1].date);
+      accumulateVideoGrowth(totals, changes);
+      previous = current;
+    }
+    return [...totals.values()].filter((video) =>
+      videoGrowthMetrics.some((metric) => (video.counters[metric] ?? 0) > 0),
+    );
+  }
+
+  videoUrl(id: string): string | undefined {
+    const profile = this.source?.state().account;
+    if (!profile || !/^\d{1,30}$/.test(id)) return;
+    const row = this.store.db.prepare(`
+      SELECT json_extract(v.body, '$.url') AS url
+      FROM tiktok_catalog_scans s JOIN tiktok_catalog_videos v ON v.scan_id = s.id
+      WHERE s.profile_id = ? AND s.status = 'complete' AND v.video_id = ?
+      ORDER BY s.started_at DESC LIMIT 1
+    `).get(profile.id, id);
+    return typeof row?.url === 'string' ? row.url : undefined;
   }
 
   start() {

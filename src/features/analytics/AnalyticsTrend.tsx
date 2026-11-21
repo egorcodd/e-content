@@ -1,50 +1,51 @@
 import { useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { TrendPlot } from './TrendPlot';
-import { Segment } from '../../shared/ui';
+import { AnimatedNumber, Segment } from '../../shared/ui';
 import { fmt, metricLabel, signedFmt, type Metric } from './chart-model';
-import { measurementDate, publicationDate, tiktokSeries } from './data';
+import { measurementDate, measurementRange, tiktokSeries } from './data';
 import { AnalyticsKpis } from './AnalyticsKpis';
 import { metricValue, type AnalyticsFilters } from './model';
-import type { TikTokCounters, TikTokMeasurement } from './contracts';
+import type { TikTokMeasurement } from './contracts';
 
 export function AnalyticsTrend({
   filters,
-  publications,
-  totals,
-  history,
-  followers,
+  points: samples,
+  previous,
+  coverageChanged,
   emptyLabel,
   onMetric,
 }: {
   filters: AnalyticsFilters;
-  publications: TikTokMeasurement[];
-  totals: TikTokCounters;
-  history: TikTokMeasurement[];
-  followers?: number;
+  points: TikTokMeasurement[];
+  previous: TikTokMeasurement[];
+  coverageChanged: boolean;
   emptyLabel: string;
   onMetric: (metric: Metric) => void;
 }) {
   const [style, setStyle] = useState('area');
   const [table, setTable] = useState(false);
   const reduced = useReducedMotion();
-  const audience = filters.metric === 'followers';
-  const source = audience ? history : publications;
-  const selectMetric = (point: TikTokMeasurement) => {
+  const lifetime = filters.period === 'all';
+  const last = samples.at(-1);
+  const baseline = previous.at(-1);
+  const points = samples.flatMap((point) => {
     const value = metricValue(point, filters.metric);
     return value === undefined ? [] : [{ ...point, value }];
-  };
-  const points = source.flatMap(selectMetric);
-  const measurements = audience ? [] : history.flatMap(selectMetric);
+  });
   const label = metricLabel(filters.metric, 'tiktok');
-  const singleMeasurement = audience && points.length === 1;
+  const scope = lifetime ? 'Счётчики аккаунта' : 'Изменение по замерам';
+  const format = lifetime ? fmt : signedFmt;
+  const singleMeasurement = points.length === 1;
   return (
     <section className="ap-trend ag-card ec-glow" aria-label="Показатели TikTok">
       <AnalyticsKpis
         filters={filters}
         onMetric={onMetric}
-        valueOf={(metric) =>
-          metric === 'followers' ? followers : totals[metric === 'reactions' ? 'likes' : metric]
+        valueOf={(metric) => last && metricValue(last, metric)}
+        compareTo={baseline && ((metric) => metricValue(baseline, metric))}
+        comparisonTitle={
+          baseline && `${measurementDate(previous[0].date)} — ${measurementDate(baseline.date)}`
         }
       />
       <div className="ap-trend-body">
@@ -53,9 +54,19 @@ export function AnalyticsTrend({
             <div className="ag-chart-legend">
               <span className="ag-swatch ap-tiktok-swatch" />
               <span>TikTok</span>
-              <span className="ap-chart-scope">
-                {audience ? 'Замеры подписчиков' : 'Накопленные счётчики по датам публикаций'}
-              </span>
+              {!lifetime && last && samples.length > 1 ? (
+                <span
+                  className="ap-chart-scope ap-measured-range"
+                  title={
+                    coverageChanged ? 'По сопоставимым роликам и новым публикациям' : undefined
+                  }
+                >
+                  <span className="sr-only">Период по замерам </span>
+                  {measurementRange(samples[0].date, last.date)}
+                </span>
+              ) : (
+                <span className="ap-chart-scope">{scope}</span>
+              )}
             </div>
             <div className="ag-chart-tools">
               <Segment
@@ -88,70 +99,52 @@ export function AnalyticsTrend({
           >
             {!points.length ? (
               <div className="ag-chart-empty" role="status">
-                {source.length ? 'За этот период показателя нет' : emptyLabel}
+                {samples.length ? 'Для этого показателя недостаточно данных.' : emptyLabel}
               </div>
             ) : table ? (
               <div className="ag-data-scroll">
                 <table>
                   <thead>
                     <tr>
-                      <th>{audience ? 'Время замера' : 'Дата публикации'}</th>
-                      {!audience && <th>Ролики</th>}
-                      <th>{label}</th>
+                      <th>Время замера</th>
+                      <th>Ролики</th>
+                      <th>{lifetime ? label : label + ' · изменение'}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {points.map((point) => (
                       <tr key={point.id}>
+                        <td>{measurementDate(point.date)}</td>
+                        <td>{fmt(point.videos)}</td>
                         <td>
-                          {audience ? measurementDate(point.date) : publicationDate(point.date)}
+                          <AnimatedNumber
+                            value={point.value}
+                            format={format}
+                            duration={0.38}
+                            animateOnMount={false}
+                          />
                         </td>
-                        {!audience && <td>{fmt(point.videos)}</td>}
-                        <td>{fmt(point.value)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {measurements.length > 1 && (
-                  <details className="ap-measurement-details">
-                    <summary>Замеры счётчиков</summary>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Время замера</th>
-                          <th>{label}</th>
-                          <th>К прошлому замеру</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {measurements.map((point, index) => (
-                          <tr key={point.id}>
-                            <td>{measurementDate(point.date)}</td>
-                            <td>{fmt(point.value)}</td>
-                            <td>
-                              {index ? signedFmt(point.value - measurements[index - 1].value) : '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </details>
-                )}
               </div>
             ) : singleMeasurement ? (
               <div className="ag-chart-empty" role="status">
-                График подписчиков появится после второго замера.
+                {lifetime
+                  ? 'История началась с первого замера. График появится после второго.'
+                  : 'Для графика нужны два сопоставимых замера.'}
               </div>
             ) : (
               <TrendPlot
-                key={`${filters.period}-${filters.source}-${filters.metric}`}
                 points={points}
                 metric={filters.metric}
-                label={audience ? label : `${label} по датам публикаций`}
+                label={label + ' · ' + scope}
                 shown={tiktokSeries}
                 area={style === 'area'}
                 readValue={(point) => point.value}
-                observations={audience}
+                observations
+                formatValue={format}
               />
             )}
           </motion.div>

@@ -156,7 +156,11 @@ export function configuration(): SourceConfiguration {
 export async function fixture(
   options: Pick<
     Parameters<typeof createApplication>[0] & {},
-    'tiktokReaderFactory' | 'tiktokContextFactory' | 'tiktokTransport' | 'tiktokNativeTransport'
+    | 'tiktokReaderFactory'
+    | 'tiktokContextFactory'
+    | 'tiktokTransport'
+    | 'tiktokNativeTransport'
+    | 'tiktokRetryDelaysMs'
   > = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), 'e-content-test-'));
@@ -204,6 +208,7 @@ export async function fixture(
     base,
     request,
     login,
+    disposeDirectory: () => rm(directory, { recursive: true, force: true }),
     async close() {
       await app.close();
       await rm(directory, { recursive: true, force: true });

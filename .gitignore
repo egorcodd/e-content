@@ -6,6 +6,15 @@ dist/
 .env.*
 !.env.example
 .local/
+vault.key
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
 __pycache__/
 *.session
 *.session-journal

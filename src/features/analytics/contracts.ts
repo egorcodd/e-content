@@ -11,6 +11,7 @@ export type TikTokMeasurement = {
   videos: number;
   counters: TikTokCounters;
   followers?: number;
+  change?: { counters: TikTokCounters; coverageChanged: boolean };
 };
 
 export type CatalogVideo = {
@@ -34,8 +35,13 @@ export type TikTokCatalogScan = {
 };
 
 export type AnalyticsHistory = {
+  telegram?: TelegramMeasurement[];
   tiktok: TikTokMeasurement[];
   handle?: string;
   scan?: TikTokCatalogScan;
   catalog?: TikTokCatalogScan;
+};
+export type TelegramMeasurement = {
+  date: string; sourceId: string; title: string; url: string; posts: number;
+  subscribers?: number; views?: number; reactions?: number; forwards?: number; comments?: number;
 };

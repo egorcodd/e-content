@@ -6,6 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { AppError } from '../errors.ts';
 
 export type TikTokTransport = {
+  maxCommentPageSize?: number;
   get(path: string, signal: AbortSignal): Promise<Record<string, unknown>>;
   close(): Promise<void>;
 };
@@ -16,12 +17,31 @@ export class TikTokRequestError extends AppError {
     code: string,
     message: string,
     readonly upstreamStatus?: number,
+    retryAt?: string,
+    readonly responseIssue?: 'empty' | 'overloaded' | 'limited' | 'access',
   ) {
-    super(status, code, message);
+    super(status, code, message, retryAt);
   }
 }
 
+function retryTime(response: Response, upstreamDelay: unknown) {
+  const now = Date.now();
+  const header = response.headers.get('Retry-After')?.trim();
+  const headerTime = header
+    ? /^\d+$/.test(header)
+      ? now + Number(header) * 1000
+      : Date.parse(header)
+    : 0;
+  const upstreamTime =
+    typeof upstreamDelay === 'number' && upstreamDelay > 0 ? now + upstreamDelay : 0;
+  const valid = [headerTime, upstreamTime].filter(
+    (time) => time > now && Number.isFinite(new Date(time).valueOf()),
+  );
+  return valid.length ? new Date(Math.max(...valid)).toISOString() : undefined;
+}
+
 export class NativeTikTokHost implements TikTokTransport {
+  readonly maxCommentPageSize = 50;
   private taskkill = resolve(process.env.SystemRoot ?? 'C:/Windows', 'System32/taskkill.exe');
   private child?: ChildProcess;
   private starting?: Promise<string>;
@@ -154,9 +174,14 @@ export class NativeTikTokHost implements TikTokTransport {
       if (!response.ok) {
         const error =
           body.error && typeof body.error === 'object'
-            ? (body.error as { kind?: string; details?: { upstreamStatus?: unknown } })
+            ? (body.error as {
+                kind?: string;
+                message?: unknown;
+                details?: { upstreamStatus?: unknown; retryAfterMs?: unknown; ticketGuardResult?: unknown };
+              })
             : undefined;
         const kind = error?.kind;
+        const detail = typeof error?.message === 'string' ? error.message : '';
         const status = error?.details?.upstreamStatus;
         const upstreamStatus =
           typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599
@@ -172,6 +197,11 @@ export class NativeTikTokHost implements TikTokTransport {
             'TIKTOK_BLOCKED',
             'TikTok ограничил запросы. Собранные данные сохранены.',
             upstreamStatus,
+            retryTime(response, error?.details?.retryAfterMs),
+            upstreamStatus === 429 ? 'limited' :
+              detail.includes('overload-protect') ? 'overloaded' :
+              error?.details?.ticketGuardResult === 0 ? 'access' :
+              /empty body/i.test(detail) && !/guard/i.test(detail) ? 'empty' : undefined,
           );
         if (kind === 'UPSTREAM_BLOCKED')
           throw new TikTokRequestError(
@@ -185,6 +215,31 @@ export class NativeTikTokHost implements TikTokTransport {
             504,
             'TIKTOK_TIMEOUT',
             'TikTok не ответил вовремя. Собранные данные сохранены.',
+          );
+        if (
+          kind === 'UPSTREAM_HTTP_ERROR' &&
+          (upstreamStatus === 404 || upstreamStatus === 410) &&
+          path.includes('/comments')
+        ) {
+          throw new TikTokRequestError(
+            upstreamStatus,
+            'TIKTOK_DISCUSSION_UNAVAILABLE',
+            'Обсуждение больше недоступно.',
+            upstreamStatus,
+          );
+        }
+        if (
+          kind === 'UPSTREAM_UNREACHABLE' ||
+          (kind === 'UPSTREAM_HTTP_ERROR' &&
+            upstreamStatus !== undefined &&
+            [500, 502, 503, 504].includes(upstreamStatus))
+        )
+          throw new TikTokRequestError(
+            503,
+            'TIKTOK_UNAVAILABLE',
+            'TikTok временно недоступен.',
+            upstreamStatus,
+            retryTime(response, error?.details?.retryAfterMs),
           );
         const requested = path.includes('/replies?')
           ? 'продолжение ответов'

@@ -14,6 +14,18 @@ const measurementFormat = new Intl.DateTimeFormat('ru-RU', {
   timeZone: 'Europe/Moscow',
 });
 export const measurementDate = (date: string) => measurementFormat.format(new Date(date));
+const shortMeasurementFormat = new Intl.DateTimeFormat('ru-RU', {
+  day: 'numeric',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'Europe/Moscow',
+});
+export const shortMeasurementDate = (date: string) => shortMeasurementFormat.format(new Date(date));
+export const measurementRange = (from: string, to: string) => {
+  const format = from.slice(0, 4) === to.slice(0, 4) ? shortMeasurementFormat : measurementFormat;
+  return format.formatRange(new Date(from), new Date(to));
+};
 const publicationFormat = new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric',
   month: 'short',
@@ -21,6 +33,18 @@ const publicationFormat = new Intl.DateTimeFormat('ru-RU', {
   timeZone: 'Europe/Moscow',
 });
 export const publicationDate = (date: string) => publicationFormat.format(new Date(date));
+const numericPublicationFormat = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: '2-digit',
+  timeZone: 'Europe/Moscow',
+});
+export const numericPublicationDate = (date: string) => numericPublicationFormat.format(new Date(date));
+const publicationTimeFormat = new Intl.DateTimeFormat('ru-RU', {
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'Europe/Moscow',
+});
+export const publicationTime = (date: string) => publicationTimeFormat.format(new Date(date));
 export const coreMetrics: { id: Metric; label: string }[] = [
   { id: 'followers', label: 'Подписчики' },
   { id: 'views', label: 'Просмотры' },

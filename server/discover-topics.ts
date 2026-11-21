@@ -48,7 +48,7 @@ const filler =
 const personal =
   /(?:^|\s)(?:я|мне|меня|ты|тебе|тебя|у меня|мне нужен|нам|my|me|you)(?:\s|$)|\d{2}\s*(?:лет|года)|https?:|@/iu;
 
-function terms(text: string) {
+export function topicTerms(text: string) {
   return (
     text
       .toLowerCase()
@@ -85,7 +85,7 @@ function signal(entry: AudienceSignal): Signal {
   return {
     ...fingerprint(entry),
     intent: intentPatterns.find(([, pattern]) => pattern.test(entry.text))?.[0] ?? 'how',
-    terms: new Set(terms(entry.text)),
+    terms: new Set(topicTerms(entry.text)),
   };
 }
 
@@ -174,7 +174,7 @@ function heading(text: string) {
 function sharedPhrase(core: string, anchors: string[]) {
   const words = [...core.matchAll(/[\p{L}][\p{L}\d+#-]*/gu)];
   const positions = words.flatMap(([word], index) =>
-    anchors.some((anchor) => terms(word).includes(anchor)) ? [index] : [],
+    anchors.some((anchor) => topicTerms(word).includes(anchor)) ? [index] : [],
   );
   const first = positions.at(0);
   const last = positions.at(-1);
@@ -214,7 +214,7 @@ function outline(question: Signal, anchors: string[]) {
     .trim()
     .replace(/[?!.,]+$/u, '')
     .trim();
-  const supported = new Set(terms(core));
+  const supported = new Set(topicTerms(core));
   if (personal.test(core) || core.length > 96 || !anchors.every((anchor) => supported.has(anchor)))
     return;
   const rewritten = titleFor(core, question.intent, anchors);

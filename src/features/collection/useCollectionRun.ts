@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { api } from './api';
+import { api, LocalApiError } from './api';
 import type { CollectionRun } from './contracts';
 import { useSources } from '../sources/repository';
 import { importIdeas } from './import-ideas';
+import { applyLibraryReset } from '../materials/repository';
 
 export function useCollectionRun(enabled: boolean) {
   const configuration = useSources();
   const [run, setRun] = useState<CollectionRun | null>(null);
+  const [pendingTikTokThreads, setPendingTikTokThreads] = useState<number | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -15,6 +17,7 @@ export function useCollectionRun(enabled: boolean) {
   const uncertain = useRef<{
     id: string;
     mode: string;
+    threadsOnly: boolean;
     configuration: typeof configuration;
   } | null>(null);
   const epoch = useRef(0);
@@ -25,10 +28,14 @@ export function useCollectionRun(enabled: boolean) {
     async function refresh() {
       const revision = epoch.current;
       try {
-        const result = await api<{ run: CollectionRun | null }>('/collection/latest');
+        const result = await api<{ run: CollectionRun | null; libraryReset?: string; pendingTikTokThreads?: number }>('/collection/latest');
+        await applyLibraryReset(result.libraryReset);
         if (disposed || revision !== epoch.current) return;
+        setPendingTikTokThreads(result.pendingTikTokThreads ?? null);
         setRun((previous) =>
-          previous?.id === result.run?.id && previous?.updatedAt === result.run?.updatedAt
+          previous?.id === result.run?.id &&
+          previous?.updatedAt === result.run?.updatedAt &&
+          previous?.canResumeTikTok === result.run?.canResumeTikTok
             ? previous
             : result.run,
         );
@@ -50,7 +57,7 @@ export function useCollectionRun(enabled: boolean) {
     };
   }, [enabled]);
   useEffect(() => {
-    if (!enabled || !run || run.status === 'running') return;
+    if (!enabled || !run) return;
     void importIdeas(run)
       .then(() => setSyncError(''))
       .catch((error) =>
@@ -59,18 +66,33 @@ export function useCollectionRun(enabled: boolean) {
         ),
       );
   }, [enabled, run]);
-  async function start(mode: string) {
+  async function start(mode: string, threadsOnly = false) {
     if (lock.current) return;
     lock.current = true;
     setPending(true);
     epoch.current++;
-    // A lost response must reuse the same request ID rather than launch another collection.
-    uncertain.current ??= {
-      id: crypto.randomUUID(),
-      mode,
-      configuration: structuredClone(configuration),
-    };
     try {
+      const prior = uncertain.current;
+      if (prior && (prior.mode !== mode || prior.threadsOnly !== threadsOnly)) {
+        const recovered = await api<{ run: CollectionRun }>(`/collection/runs/${prior.id}`).catch(
+          (error) => {
+            if (error instanceof LocalApiError && error.code === 'RUN_NOT_FOUND') return null;
+            throw error;
+          },
+        );
+        uncertain.current = null;
+        if (recovered?.run.status === 'running') {
+          setRun(recovered.run);
+          throw new LocalApiError('Предыдущий запуск ещё выполняется.', 'RUN_ACTIVE');
+        }
+      }
+      // Retrying the same action after a lost response must reuse its request ID.
+      uncertain.current ??= {
+        id: crypto.randomUUID(),
+        mode,
+        threadsOnly,
+        configuration: structuredClone(configuration),
+      };
       const result = await api<{ run: CollectionRun }>(
         '/collection/runs',
         'POST',
@@ -103,5 +125,37 @@ export function useCollectionRun(enabled: boolean) {
       setPending(false);
     }
   }
-  return { run, loading, pending, error: error || syncError, start, cancel };
+  async function resumeTikTok() {
+    if (!run?.canResumeTikTok || lock.current) return;
+    lock.current = true;
+    setPending(true);
+    epoch.current++;
+    try {
+      const result = await api<{ run: CollectionRun }>(
+        `/collection/runs/${run.id}/resume`,
+        'POST',
+        {},
+      );
+      setRun(result.run);
+      uncertain.current = null;
+      setError('');
+    } finally {
+      lock.current = false;
+      setPending(false);
+    }
+  }
+  const hasEnabledTelegram = configuration.sources.some(
+    (source) => source.platform === 'telegram' && source.enabled,
+  );
+  return {
+    run,
+    pendingTikTokThreads,
+    loading,
+    pending,
+    hasEnabledTelegram,
+    error: error || syncError,
+    start,
+    resumeTikTok,
+    cancel,
+  };
 }

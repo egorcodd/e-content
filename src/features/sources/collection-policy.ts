@@ -233,7 +233,7 @@ export function buildCollectionPlan(
       source: { ...source, url: parsed.url },
       connectorId: access.connectorId,
       window: {
-        since: new Date(Date.parse(until) - Number(values.period) * 86400000).toISOString(),
+        since: new Date(values.period === 'all' ? 0 : Date.parse(until) - Number(values.period) * 86400000).toISOString(),
         until,
       },
       outputs: { publications: values.publications, comments, metrics },

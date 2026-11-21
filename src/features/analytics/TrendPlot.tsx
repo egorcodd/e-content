@@ -86,8 +86,9 @@ export function TrendPlot<P extends { date: string }>({
     ...item,
     d: smoothPath(points.map((point, i) => [x(i), y(value(point, item.id))])),
   }));
-  const current = active == null ? null : points[active];
-  const cursor = active == null ? 0 : x(active);
+  const activeIndex = active == null ? null : Math.min(active, points.length - 1);
+  const current = activeIndex == null ? null : points[activeIndex];
+  const cursor = activeIndex == null ? 0 : x(activeIndex);
   const tickCount = width < 420 ? 2 : 4;
   const step = Math.ceil((points.length - 1) / tickCount);
   const labels = Array.from({ length: tickCount }, (_, index) => index * step)
@@ -96,7 +97,11 @@ export function TrendPlot<P extends { date: string }>({
   const distinctLabels = labels.filter(
     (index, i) => i === labels.length - 1 || x(labels[i + 1]) - x(index) > 65,
   );
-  const draw = { duration: reduced ? 0 : 1.4, ease };
+  const draw = { duration: reduced ? 0 : observations ? 0.42 : 1.4, ease };
+  const fill = observations
+    ? { duration: reduced ? 0 : 0.24 }
+    : { duration: 1, delay: reduced ? 0 : 0.5 };
+  const path = { duration: reduced ? 0 : observations ? 0.38 : 0.6, ease };
   const glide = reduced
     ? { duration: 0 }
     : ({ type: 'spring', stiffness: 700, damping: 50, mass: 0.6 } as const);
@@ -182,7 +187,7 @@ export function TrendPlot<P extends { date: string }>({
               .slice()
               .reverse()
               .map((line) => (
-                <g key={line.id + metric + points.length}>
+                <g key={line.id + (observations ? '' : metric) + points.length}>
                   {area && points.length > 1 && line.id !== 'total' && (
                     <motion.path
                       fill={`url(#${gradientId}-area-${line.id})`}
@@ -195,8 +200,8 @@ export function TrendPlot<P extends { date: string }>({
                         d: `${line.d}L${x(points.length - 1)},${y(0)}L${x(0)},${y(0)}Z`,
                       }}
                       transition={{
-                        opacity: { duration: 1, delay: reduced ? 0 : 0.5 },
-                        d: { duration: 0.6, ease },
+                        opacity: fill,
+                        d: path,
                       }}
                     />
                   )}
@@ -216,7 +221,7 @@ export function TrendPlot<P extends { date: string }>({
                     transition={{
                       pathLength: draw,
                       opacity: { duration: 0.8, delay: 0.6 },
-                      d: { duration: 0.6, ease },
+                      d: path,
                     }}
                   />
                   {points.length === 1 && (

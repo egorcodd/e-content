@@ -19,6 +19,22 @@ function comment(id: string, text: string, parentId?: string): CollectedRecord {
   };
 }
 
+test('an implicit request about DevOps tasks supports entry questions across threads', () => {
+  const q = comment('a', 'Стоит ли идти в девопс?');
+  const interest = comment('b', 'хочу в devops но хз чо он делает');
+  const chatter = comment('c', 'хочу в DevOps, сегодня поднял сервер');
+  assert.deepEqual(analyzeIdeas([q, interest, chatter])[0].evidence.map(e => e.id), ['a', 'b']);
+  assert.deepEqual(analyzeIdeas([q, { ...interest, parentId: 'a' }]), []);
+});
+
+test('a general interview request cannot corroborate a question about a first internship', () => {
+  const first = comment('a', 'куда можно на стажировку устроиться го бекендером?');
+  const general = comment('b', 'А как попасть на собес, я уже переделал резюме?');
+  assert.deepEqual(analyzeIdeas([first, general]), []);
+  const similar = comment('c', 'Как найти стажировку без опыта работы?');
+  assert.equal(analyzeIdeas([first, similar])[0].id, 'tiktok-topic-first-job');
+});
+
 test('independent questions discover a topic outside the catalog and retain linked evidence', () => {
   const a = comment('a', 'Как подобрать помол для эспрессо?');
   const b = comment('b', 'Как настроить помол под эспрессо дома?');

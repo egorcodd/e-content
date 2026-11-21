@@ -101,6 +101,8 @@ test('actual worker pages services and short pages, deduplicates threads and is 
     assert.equal(result.counts.comments, 3);
     assert.equal(result.counts.ideas, 1);
     assert.ok(result.done.includes('orchestrator'));
+    assert.ok(result.done.includes('analytics'));
+    assert.equal((await f.request('/analytics/history')).data.telegram[0].posts,2);
     assert.ok(!result.done.includes('tiktok'));
     const records = f.app.store.records(id);
     assert.equal(

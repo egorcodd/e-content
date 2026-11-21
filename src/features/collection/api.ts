@@ -30,7 +30,7 @@ export async function api<T>(
         ...(method !== 'GET' ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf! } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(path.endsWith('/ai-ideas') && method === 'POST' ? 165000 : 60000),
     });
   } catch {
     throw new LocalApiError(

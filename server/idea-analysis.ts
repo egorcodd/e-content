@@ -9,6 +9,7 @@ import {
 } from './discover-topics.ts';
 import { isConcreteComplaint, recurringProblem } from './problem-signals.ts';
 import {
+  asksAboutRoleTasks,
   isItContext,
   isShortQuestion,
   questionParts,
@@ -83,7 +84,7 @@ const topics: Topic[] = [
   {
     id: 'first-job',
     subject: /работ[ауе]|трудоустр|ваканси|джун|\bjunior\b|стажиров|резюме|собес/,
-    need: /без (?:коммерческого )?опыта|перв[а-я]* работ|перв[а-я]* мест|нет опыта|как попасть на собес|как найти стажиров|на джуна.*не берут/,
+    need: /без (?:коммерческого )?опыта|перв[а-я]* работ|перв[а-я]* мест|нет опыта|как найти стажиров|куда (?:можно )?(?:пойти |устроиться )?на стажиров|на джуна.*не берут/,
   },
 ];
 
@@ -96,7 +97,7 @@ const decisionQuestion =
 const obstacle =
   /(?:^| )(?:не понимаю|не получается|не могу (?:выбрать|найти|понять|решить|устроиться)|не знаю|у меня (?:нет|проблем[а-я]*)|нет (?:клиент|заказ|опыт))/;
 const chatter =
-  /^(?:ты ч[ео]|а ты |х[аэ]х[аэ]х|это где такие сказки|конкурентов убираешь|во во |ты в курсе|а зачем еще|почему бред)|(?:ты|тебя|тебе) (?:[а-я]+ ){0,3}(?:дурак|дурачок|долбо[её]б|идиот|поц)(?: |$)|накрут[а-я]* опыт|поддел[а-я]* документ/;
+  /^(?:ты ч[ео]|а ты |х[аэ]х[аэ]х|это где такие сказки|конкурентов убираешь|во во |ты в курсе|а зачем еще|почему бред)|(?:ты|тебя|тебе) (?:[а-я]+ ){0,3}(?:дурак|дурачок|долбо[её]б|идиот|поц)(?: |$)/;
 
 function normalize(text: string) {
   return text
@@ -114,6 +115,7 @@ function* questionsFrom(record: CollectedRecord, text: string) {
     const isQuestion =
       directQuestion.test(words) ||
       askForHelp.test(words) ||
+      asksAboutRoleTasks(words) ||
       (sentence.includes('?') && (decisionQuestion.test(words) || isShortQuestion(words)));
     const role = isQuestion
       ? ('question' as const)
@@ -204,7 +206,11 @@ export function analyzeIdeas(records: Iterable<CollectedRecord>): FoundIdea[] {
     const match = clauses.flatMap(({ words, context, role }) => {
       if (role === 'complaint' && !obstacle.test(words)) return [];
       const topic = topics.find(
-        ({ subject, need }) => (subject.test(words) || subject.test(context)) && need.test(words),
+        ({ id, subject, need }) =>
+          (subject.test(words) || subject.test(context)) &&
+          (need.test(words) ||
+            (['devops-start', 'qa-start', 'cybersecurity-start'].includes(id) &&
+              asksAboutRoleTasks(words))),
       );
       return topic ? [{ topic, words }] : [];
     })[0];

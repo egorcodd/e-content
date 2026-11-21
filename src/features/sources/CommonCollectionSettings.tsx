@@ -42,7 +42,7 @@ function DefaultsEditor({ settings, runLimits, notify }: Props) {
             onChange={(period) =>
               setDraft({ ...draft, period: period as CollectionSettings['period'] })
             }
-            values={['7', '30', '90'].map((id) => ({ id, label: `${id} дней` }))}
+            values={['7', '30', '90', 'all'].map((id) => ({ id, label: id === 'all' ? 'За всё время' : `${id} дней` }))}
           />
         </div>
         <fieldset className="common-settings-types">

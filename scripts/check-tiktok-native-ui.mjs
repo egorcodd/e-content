@@ -124,7 +124,7 @@ try {
   assert.equal(await profileButton.locator('svg').count(), 0);
   const data = page.getByRole('complementary', { name: 'Параметры TikTok', exact: true });
   const reset = data.getByRole('button', { name: 'Вернуть общие настройки TikTok', exact: true });
-  await data.getByRole('button', { name: '90 дней', exact: true }).click();
+  await data.getByRole('button', { name: 'За всё время', exact: true }).click();
   await reset.waitFor();
   assert.equal(await data.locator('.platform-setting-reset').count(), 1);
   assert.equal(await data.locator('.platform-settings-heading .platform-setting-reset').count(), 1);
@@ -148,9 +148,134 @@ try {
     );
     await page.screenshot({ path: `.qa/tiktok-native-${width}.png`, fullPage: true });
   }
+  await page.addInitScript(() => localStorage.setItem('e-content-sample-data', 'off'));
+  const runId = 'fixture-live-materials';
+  const idea = {
+    id: 'fixture-live-idea',
+    title: 'Как проверить обновление подборки во время сбора',
+    body: 'Разобрать повторяющийся вопрос подписчиков.',
+    format: 'video',
+    source: 'tiktok',
+    evidence: [],
+  };
+  const evidence = (id) => ({
+    id,
+    source: 'tiktok',
+    kind: 'comment',
+    text: 'Вопрос из обсуждения',
+    url: 'https://www.tiktok.com/@fixture_user/video/7708022666925559054',
+  });
+  await page.route('**/api/collection/latest', (route) =>
+    route.fulfill({
+      json: {
+        ideaAnalysisVersion: 7,
+        run: {
+          id: runId,
+          status: 'running',
+          ideaAnalysisVersion: 7,
+          ideaRevision: idea.evidence.length,
+          updatedAt: new Date().toISOString(),
+          counts: { posts: 1, comments: idea.evidence.length, ideas: idea.evidence.length ? 1 : 0 },
+        },
+      },
+    }),
+  );
+  await page.route('**/api/collection/runs/fixture-live-materials/ideas?*', (route) =>
+    route.fulfill({ json: { items: [idea] } }),
+  );
+  await page.goto('http://127.0.0.1:5186/materials');
+  await page.getByRole('button', { name: 'Все идеи', exact: true }).click();
+  idea.evidence.push(evidence('reply-a'), evidence('reply-b'));
+  await page.getByText(idea.title, { exact: true }).waitFor();
+  await page.evaluate(async (id) => {
+    const { readMaterial, saveMaterial } = await import('/src/features/materials/repository.ts');
+    const item = await readMaterial(id);
+    await saveMaterial({ ...item, favorite: true }, item.revision);
+  }, idea.id);
+  idea.evidence.push(evidence('reply-c'));
+  await page.waitForFunction(async (id) => {
+    const { readMaterial } = await import('/src/features/materials/repository.ts');
+    const item = await readMaterial(id);
+    return item?.favorite && item.evidence.length === 3;
+  }, idea.id);
+  assert.equal(await page.getByText(idea.title, { exact: true }).count(), 1);
+  const retryAt = new Date(Date.now() + 60_000).toISOString();
+  const workshop = {
+    id: 'fixture-paused-tiktok',
+    status: 'running',
+    active: 'tiktok',
+    done: [],
+    steps: { tiktok: 1 },
+    events: [],
+    skipped: ['telegram'],
+    counts: { posts: 20, comments: 150, requests: 25, ideas: 8 },
+    updatedAt: new Date().toISOString(),
+    sources: {
+      profile: {
+        platform: 'tiktok',
+        status: 'reading',
+        videos: { selected: 20, processed: 8 },
+        comments: 150,
+        url: 'https://www.tiktok.com/@fixture_user',
+        retry: { at: retryAt, attempt: 2 },
+      },
+    },
+  };
+  await page.route('**/api/collection/latest', (route) =>
+    route.fulfill({ json: { run: workshop } }),
+  );
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('http://127.0.0.1:5186/');
+  await page.locator('.app-loader').waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Открыть участок Ядро', exact: true }).click();
+  const core = page.getByRole('region', { name: 'Процесс Ядро' });
+  await core.getByText(/Следующая попытка автоматически/).waitFor();
+  assert.equal(await core.locator('time').getAttribute('datetime'), retryAt);
+  await core.getByText('Ролики с завершённым сбором: 8 из 20').waitFor();
+  assert.equal(
+    await core.getByRole('link', { name: 'Открыть идеи видео' }).getAttribute('href'),
+    '/materials?folder=video-ideas',
+  );
+  workshop.status = 'partial';
+  workshop.active = null;
+  workshop.done = ['collector', 'ideas', 'materials', 'orchestrator'];
+  workshop.failures = { tiktok: 'TikTok временно недоступен.' };
+  Object.assign(workshop.sources.profile, {
+    status: 'limited',
+    stopCode: 'TIKTOK_DEFERRED',
+    retry: undefined,
+  });
+  workshop.updatedAt = new Date().toISOString();
+  const collect = core.getByRole('button', { name: 'Запустить весь цикл', exact: true });
+  await collect.waitFor();
+  await page.route('**/api/collection/runs', (route) => {
+    return route.fulfill({
+      status: 409,
+      json: { error: { code: 'RUN_ACTIVE', message: 'Уже запущен.' } },
+    });
+  });
+  const [full] = await Promise.all([page.waitForRequest('**/api/collection/runs'),collect.click()]);
+  assert.equal(full.postDataJSON().mode,'cycle');
+  await core.getByRole('alert').waitFor();
+  await core.getByRole('button', {name:'Закрыть процесс'}).click();
+  await page.getByRole('button', {name:'Открыть участок TikTok',exact:true}).click();
+  const channel = page.getByRole('region',{name:'Процесс TikTok'});
+  const [single] = await Promise.all([page.waitForRequest('**/api/collection/runs'),
+    channel.getByRole('button',{name:'Собрать идеи',exact:true}).click()]);
+  assert.equal(single.postDataJSON().mode,'tiktok');
+  await channel.getByRole('alert').waitFor();
+  // A retained checkpoint for this very same run must be visible even if the report is unchanged.
+  workshop.canResumeTikTok = true;
+  const resume = channel.getByRole('button', { name: 'Продолжить сбор', exact: true });
+  await resume.waitFor();
+  const resumeEndpoint = `**/api/collection/runs/${workshop.id}/resume`;
+  await page.route(resumeEndpoint, (route) => route.fulfill({ json: { run: workshop } }));
+  const [resumed] = await Promise.all([page.waitForRequest(resumeEndpoint), resume.click()]);
+  assert.equal(resumed.method(), 'POST');
+  assert.equal(await page.locator('dialog[open]').count(), 0);
   assert.deepEqual(errors, []);
   console.log(
-    'Native TikTok UI: profile validation, separate video/comment limits, persistence after reload and responsive widths passed.',
+    'Native TikTok UI passed, including live publication and evidence updates in an open library.',
   );
 } finally {
   await browser.close();

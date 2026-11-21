@@ -1,7 +1,7 @@
 import { metrics } from './data';
 import type { Metric, Platform } from './chart-model';
 import type { CatalogVideo, TikTokMeasurement } from './contracts';
-import { sumCounters } from './counters';
+import { counterKeys } from './counters';
 
 export type AnalyticsPeriod = '7' | '30' | 'all';
 export const analyticsPeriods: { id: AnalyticsPeriod; label: string }[] = [
@@ -32,22 +32,53 @@ export function metricValue(point: TikTokMeasurement, metric: Metric) {
   return point.counters[metric === 'reactions' ? 'likes' : metric];
 }
 
-export function publicationPoints(videos: CatalogVideo[]): TikTokMeasurement[] {
-  const byDate = new Map<string, CatalogVideo[]>();
-  for (const video of videos) {
-    const date = new Date(Date.parse(video.date) + 3 * 3600000).toISOString().slice(0, 10);
-    const existing = byDate.get(date);
-    if (existing) existing.push(video);
-    else byDate.set(date, [video]);
+export function accountWindow(history: TikTokMeasurement[], period: AnalyticsPeriod) {
+  const last = history.at(-1);
+  if (!last || period === 'all') return history;
+  const since = Date.parse(last.date) - Number(period) * 86400000;
+  return history.filter(point => Date.parse(point.date) >= since);
+}
+
+// Only attribute intervals whose two endpoints were actually measured in the window.
+export function periodGrowth(points: TikTokMeasurement[]): TikTokMeasurement[] {
+  if (points.length < 2) return [];
+  const first = points[0];
+  let totals: TikTokMeasurement['counters'] = {};
+  for (const key of counterKeys) {
+    if (first.counters[key] !== undefined) totals[key] = 0;
   }
-  return [...byDate.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([id, group]) => ({
-      id,
-      date: id + 'T00:00:00+03:00',
-      videos: group.length,
-      counters: sumCounters(group),
-    }));
+  return points.map((point, index) => {
+    if (index > 0) {
+      const next: typeof totals = {};
+      for (const key of counterKeys) {
+        const change = point.change?.counters[key];
+        const prior = totals[key];
+        if (prior !== undefined && change !== undefined) next[key] = prior + change;
+      }
+      totals = next;
+    }
+    return { ...point, counters: totals, followers: point.followers === undefined || first.followers === undefined
+      ? undefined : point.followers - first.followers };
+  });
+}
+
+export function previousPeriod(
+  history: TikTokMeasurement[],
+  current: TikTokMeasurement[],
+  period: AnalyticsPeriod,
+) {
+  if (period === 'all' || current.length < 2) return [];
+  const first = Date.parse(current[0].date);
+  const duration = Date.parse(current.at(-1)!.date) - first;
+  const day = 86400000;
+  // Daily observations can fall just after the requested boundary.
+  if (duration < (Number(period) - 1) * day) return [];
+  const previous = accountWindow(history.filter((point) => Date.parse(point.date) <= first), period);
+  if (previous.length < 2) return [];
+  const previousDuration = first - Date.parse(previous[0].date);
+  if (previousDuration < (Number(period) - 1) * day || Math.abs(previousDuration - duration) > day / 2)
+    return [];
+  return periodGrowth(previous);
 }
 
 export function readFilters(search: string): AnalyticsFilters {
@@ -83,11 +114,13 @@ export function catalogCsv(videos: CatalogVideo[]) {
   );
 }
 
-export function analyticsCsv(points: TikTokMeasurement[]) {
+export function analyticsCsv(points: TikTokMeasurement[], growth = false) {
   return (
     '\uFEFF' +
     [
-      'Время сбора (UTC);Площадка;Ролики со счётчиками;Подписчики;Просмотры;Комментарии;Лайки;Репосты',
+      ['Время сбора (UTC)', 'Площадка', 'Ролики со счётчиками',
+        ...['Подписчики','Просмотры','Комментарии','Лайки','Репосты'].map(name =>
+          growth ? name + ' (изменение с первого замера периода)' : name)].join(';'),
       ...points.map(({ date, videos, counters, followers }) =>
         [
           date,

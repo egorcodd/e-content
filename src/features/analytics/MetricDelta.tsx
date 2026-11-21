@@ -1,16 +1,28 @@
 import { ArrowDownRightIcon, ArrowUpRightIcon } from '@phosphor-icons/react';
+import { AnimatedNumber } from '../../shared/ui';
 import { percent } from './chart-model';
-export function MetricDelta({ value, suffix }: { value: number; suffix: string }) {
-  const up = value >= 0;
+const absolutePercent = (value: number) => percent(Math.abs(value));
+export function MetricDelta({
+  value,
+  suffix,
+  title,
+}: {
+  value: number;
+  suffix: string;
+  title?: string;
+}) {
+  const direction = value > 0 ? 'is-up' : value < 0 ? 'is-down' : '';
   return (
-    <span className={`ag-delta ${up ? 'is-up' : 'is-down'}`}>
+    <span className={`ag-delta ${direction}`} title={title}>
       <span className="ag-delta-badge">
-        {up ? (
-          <ArrowUpRightIcon size={12} weight="bold" />
-        ) : (
-          <ArrowDownRightIcon size={12} weight="bold" />
-        )}
-        {percent(Math.abs(value))}
+        {value > 0 && <ArrowUpRightIcon size={12} weight="bold" />}
+        {value < 0 && <ArrowDownRightIcon size={12} weight="bold" />}
+        <AnimatedNumber
+          value={value}
+          format={absolutePercent}
+          duration={0.38}
+          animateOnMount={false}
+        />
       </span>
       <span className="ag-delta-suffix">{suffix}</span>
     </span>

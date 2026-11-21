@@ -16,6 +16,11 @@ export function isShortQuestion(text: string) {
   );
 }
 
+// A concrete request about the work can be phrased as a first-person statement.
+export function asksAboutRoleTasks(words: string) {
+  return /(?:^| )(?:хочу (?:пойти |уйти )?в|хочу стать|планирую стать) \S+(?: \S+){0,4} (?:но )?(?:хз|не знаю|не понимаю) (?:что|чо|чем|какие задачи) (?:он[аи]? |там |они )?(?:дела|занима|реша)/u.test(words);
+}
+
 const tracks = [
   {
     key: 'backend',

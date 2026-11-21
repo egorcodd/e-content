@@ -46,6 +46,7 @@ export type Gateway = {
   session(): string;
   revoke(): Promise<void>;
   beforeRequest?: (signal?: AbortSignal) => Promise<void>;
+  subscribers?(target: Peer, signal: AbortSignal): Promise<number | undefined>;
   resolve(source: AnalysisSource, signal?: AbortSignal): Promise<Peer>;
   posts(
     peer: Peer,
@@ -321,6 +322,12 @@ export class TelegramGateway implements Gateway {
       'CHANNEL_PRIVATE',
       'Закрытый канал не найден среди доступных диалогов аккаунта.',
     );
+  }
+  async subscribers(target: Peer, signal: AbortSignal) {
+    if (!(target.input instanceof Api.InputPeerChannel)) return undefined;
+    const channel = new Api.InputChannel({channelId: target.input.channelId, accessHash: target.input.accessHash});
+    const result = await this.rpc(new Api.channels.GetFullChannel({channel}), signal);
+    return result.fullChat instanceof Api.ChannelFull ? result.fullChat.participantsCount : undefined;
   }
   async posts(
     target: Peer,

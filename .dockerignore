@@ -4,3 +4,16 @@ dist
 .git
 *.log
 .env*
+.local
+**/.local
+**/*.session
+**/*.session-journal
+**/vault.key
+**/*.sqlite
+**/*.sqlite-*
+**/*.sqlite3
+**/*.sqlite3-*
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*.db-journal

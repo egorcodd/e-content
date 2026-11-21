@@ -102,7 +102,7 @@ export function PlatformCollectionSettings({
           label={`Период анализа ${name}`}
           value={values.period}
           onChange={(period) => patch({ period: period as CollectionSettings['period'] })}
-          values={['7', '30', '90'].map((id) => ({ id, label: `${id} дней` }))}
+          values={['7', '30', ...(values.period === '90' ? ['90'] : []), 'all'].map((id) => ({ id, label: id === 'all' ? 'За всё время' : `${id} дней` }))}
         />
       </div>
       <fieldset className="platform-data-types">

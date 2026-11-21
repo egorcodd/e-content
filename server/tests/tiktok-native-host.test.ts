@@ -37,7 +37,18 @@ async function fixture() {
       if(req.url==='/'){res.writeHead(404);return res.end();}
       if(req.url.includes('slow'))return;
       res.setHeader('Content-Type','application/json');
-      if(req.url.includes('throttled')||req.url.includes('timeout')) {res.writeHead(502);return res.end(JSON.stringify({error:{kind:req.url.includes('throttled')?'UPSTREAM_THROTTLED':'UPSTREAM_TIMEOUT'}}));}
+      if(req.url.includes('rejected-client')){
+        res.writeHead(429);
+        return res.end(JSON.stringify({error:{kind:'UPSTREAM_THROTTLED',message:'TikTok answered HTTP 200 with an empty body for the page (tt-ticket-guard-result: 0).',details:{upstreamStatus:200,ticketGuardResult:0}}}));
+      }
+      if(req.url.includes('throttled')){
+        res.writeHead(502,{'Retry-After':'20'});
+        return res.end(JSON.stringify({error:{kind:'UPSTREAM_THROTTLED',message:'TikTok answered HTTP 200 with an empty body for the page.',details:{upstreamStatus:200,retryAfterMs:30000}}}));
+      }
+      if(req.url.includes('timeout')){
+        res.writeHead(502);
+        return res.end(JSON.stringify({error:{kind:'UPSTREAM_TIMEOUT'}}));
+      }
       res.end(JSON.stringify(req.url.includes('refused')?{status_code:0,statusCode:10221}:{status_code:0,userInfo:{user:{uniqueId:'fixture'}}}));
     }).listen(Number(process.env.PORT),'127.0.0.1');
   `,
@@ -69,9 +80,26 @@ test('native host starts without contacting upstream health and rejects conflict
     await assert.rejects(f.host.get('/internal/session', AbortSignal.timeout(5000)), {
       code: 'TIKTOK_PATH',
     });
+    await assert.rejects(f.host.get('/tiktok/user/detail?uniqueId=rejected-client', AbortSignal.timeout(5000)),
+      {code:'TIKTOK_BLOCKED',upstreamStatus:200,responseIssue:'access'});
+    const beforeThrottle = Date.now();
     await assert.rejects(
       f.host.get('/tiktok/user/detail?uniqueId=throttled', AbortSignal.timeout(5000)),
-      { code: 'TIKTOK_BLOCKED', status: 429 },
+      (error: unknown) => {
+        const item = error as {
+          code?: string;
+          status?: number;
+          upstreamStatus?: number;
+          retryAt?: string;
+          responseIssue?: string;
+        };
+        assert.equal(item.code, 'TIKTOK_BLOCKED');
+        assert.equal(item.status, 429);
+        assert.equal(item.upstreamStatus, 200);
+        assert.equal(item.responseIssue, 'empty');
+        assert.ok(Date.parse(item.retryAt!) >= beforeThrottle + 30_000);
+        return true;
+      },
     );
     await assert.rejects(
       f.host.get('/tiktok/user/detail?uniqueId=timeout', AbortSignal.timeout(5000)),

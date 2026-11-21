@@ -12,7 +12,7 @@ export type AnalysisSource = {
   createdAt: string;
 };
 export type CollectionSettings = {
-  period: '7' | '30' | '90';
+  period: '7' | '30' | '90' | 'all';
   comments: boolean;
   publications: boolean;
   metrics: boolean;
@@ -159,7 +159,7 @@ export function parseSource(input: string, platform: Platform) {
 }
 
 export function validateSettings(settings: CollectionSettings): CollectionSettings {
-  if (!['7', '30', '90'].includes(settings.period)) throw new Error('Выберите период сбора.');
+  if (!['7', '30', '90','all'].includes(settings.period)) throw new Error('Выберите период сбора.');
   if (
     ![settings.comments, settings.publications, settings.metrics].every(
       (value) => typeof value === 'boolean',
@@ -194,7 +194,7 @@ export function validateOverrides(value: unknown): CollectionOverrides | null {
     const field = (value as Record<string, unknown>)[key];
     const valid =
       key === 'period'
-        ? ['7', '30', '90'].includes(field as string)
+        ? ['7', '30', '90','all'].includes(field as string)
         : key === 'maxPublications'
           ? Number.isInteger(field) && (field as number) >= 0 && (field as number) <= 500
           : key === 'maxComments'

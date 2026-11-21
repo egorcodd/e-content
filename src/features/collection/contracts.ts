@@ -24,14 +24,32 @@ export type CollectedRecord = RecordFields &
     | { platform: 'tiktok'; videoId: string; commentId?: string }
   );
 export type FoundIdea = {
+  excludedEvidenceIds?: string[];
+  mergedFrom?: { id: string; title: string; body: string }[];
   id: string;
   title: string;
   body: string;
-  format: 'undecided' | 'video';
+  format: 'undecided' | 'video' | 'post';
   source: 'telegram' | 'tiktok';
   evidence: Evidence[];
 };
+export type AiIdeaReport = {
+  model: string;
+  comments: number;
+  videos: number;
+  ideas: { topicId?: string; title: string; angle: string; evidence: (Evidence & { quote?: string })[] }[];
+  usage: { input: number; output: number; cachedInput?: number };
+};
 export type CollectionRun = {
+  tiktokCollectUntil?: number;
+  followUp?: { state: 'manual' | 'queued' | 'reading' | 'complete' | 'limited'; attempts: number; sample: number; at: string; reason?: string };
+  ideaMode?: 'ai' | 'collect';
+  aiUsage?: AiIdeaReport['usage'];
+  aiCostUsd?: number;
+  canResumeTikTok?: boolean;
+  previousTikTokRun?: Pick<CollectionRun, 'id' | 'counts' | 'updatedAt'>;
+  tiktokCollectionVersion?: 2 | 3;
+  threadsOnly?: boolean;
   id: string;
   status: 'running' | 'completed' | 'partial' | 'cancelled' | 'failed' | 'interrupted';
   active: string | null;
@@ -47,6 +65,8 @@ export type CollectionRun = {
   retryAt?: string;
   ideas: FoundIdea[];
   ideaAnalysisVersion?: number;
+  ideaInputCount?: number;
+  ideaRevision?: number;
   failures?: Record<string, string>;
   sources?: Record<string, SourceProgress>;
   parameters?: {
@@ -55,6 +75,9 @@ export type CollectionRun = {
   };
 };
 export type SourceProgress = {
+  provider?: 'apify';
+  reusedComments?: number;
+  sampleVideos?: number;
   platform: 'telegram' | 'tiktok';
   status:
     | 'reading'
@@ -69,6 +92,8 @@ export type SourceProgress = {
   url: string;
   comments: number;
   videos?: { selected: number; processed: number };
+  backlogVideos?: number;
+  threads?: { selected: number; completed: number };
   receivedComments?: number;
   limits?: { commentsPerVideo: number; limitedVideos: number };
   notices?: { code: string; videoId?: string; count?: number }[];
@@ -76,11 +101,15 @@ export type SourceProgress = {
   cursor?: string;
   reason?: string;
   stopCode?: string;
+  retry?: { at: string; attempt: number; scope?: 'discussions' };
+  deferredVideos?: number[];
+  inlineReplies?: { threads: number; comments: number };
   failedRequest?: {
     stage: 'profile' | 'videos' | 'video' | 'comments' | 'replies';
     videoId?: string;
     videoNumber?: number;
     upstreamStatus?: number;
+    responseIssue?: 'empty' | 'overloaded' | 'limited' | 'access';
   };
   updatedAt: string;
 };

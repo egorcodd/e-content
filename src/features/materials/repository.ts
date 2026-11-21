@@ -83,10 +83,13 @@ function archiveUnchangedLegacyIdea(record: Material): Material {
 
 function open() {
   return (database ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('e-content-library', 6);
+    const request = indexedDB.open('e-content-library', 8);
     request.onupgradeneeded = (event) => {
       const db = request.result;
       const tx = request.transaction!;
+      db.createObjectStore('metadata');
+      if (event.oldVersion < 7) db.createObjectStore('deletedIdeas');
+      if (event.oldVersion >= 6) return;
       const folders =
         event.oldVersion === 0
           ? db.createObjectStore('folders', { keyPath: 'id' })
@@ -217,12 +220,46 @@ async function refresh() {
   });
 }
 
+let appliedReset = '';
+export async function applyLibraryReset(id?: string | null) {
+  if (!id || id === appliedReset) return;
+  const db = await open();
+  let changed = false;
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(['metadata', 'materials', 'folders', 'artifacts', 'deletedIdeas'], 'readwrite');
+    const meta = tx.objectStore('metadata');
+    const previous = meta.get('library-reset');
+    previous.onsuccess = () => {
+      if (previous.result === id) return;
+      for (const name of ['materials', 'folders', 'artifacts', 'deletedIdeas']) tx.objectStore(name).clear();
+      for (const [folderId, title] of [['inbox', 'Неразобранное'], ['video-ideas', 'Идеи видео'], ['post-ideas', 'Идеи постов'], ['archive', 'Архив']])
+        tx.objectStore('folders').put({ id: folderId, title, createdAt: new Date().toISOString() });
+      meta.put(id, 'library-reset');
+      changed = true;
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = tx.onabort = () => reject(tx.error);
+  });
+  appliedReset = id;
+  if (changed) {
+    localStorage.removeItem('e-content-imported-runs-v2');
+    localStorage.removeItem('e-content-imported-ai-materials');
+    localStorage.removeItem('e-content-reviewed-video-ideas');
+    await refresh();
+    channel?.postMessage('changed');
+  }
+}
+
 export function initializeLibrary() {
   return (initialized ??= (async () => {
+    const latest = await fetch('/api/collection/latest', {cache: 'no-store', signal: AbortSignal.timeout(3000)})
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+    await applyLibraryReset(latest?.libraryReset);
     await refresh();
     if (
       import.meta.env.DEV &&
-      localStorage.getItem('e-content-sample-data') !== 'off' &&
+      localStorage.getItem('e-content-sample-data') === 'on' &&
+      !appliedReset &&
       localStorage.getItem('e-content-sample-ideas-v2') !== 'ready'
     ) {
       const { sampleIdeas } = await import('./sample-data');
@@ -355,33 +392,99 @@ export async function saveMaterial(
 }
 
 export async function saveFoundIdea(
-  input: Pick<Material, 'id' | 'title' | 'body' | 'format' | 'source' | 'evidence'>,
+  { mergedFrom = [], excludedEvidenceIds = [], ...input }: FoundIdea,
 ) {
   if (!input.evidence.length)
     throw new Error('У найденной идеи должно быть хотя бы одно основание');
   await initializeLibrary();
-  const existing = snapshot.materials.find((item) => item.id === input.id);
-  const evidence = [
-    ...new Map(
-      [...(existing?.evidence ?? []), ...input.evidence].map((item) => [
-        `${item.source}:${item.id}`,
-        item,
-      ]),
-    ).values(),
-  ];
-  return saveMaterial(
-    {
-      ...input,
-      ...existing,
-      evidence,
-      folderId: existing?.folderId ?? formatFolder(input.format),
-      favorite: existing?.favorite ?? false,
-      generatedDraft: isDiscoveredIdea(input.id)
-        ? (existing?.generatedDraft ?? { title: input.title, body: input.body })
-        : undefined,
-    },
-    existing?.revision,
-  );
+  let saved: Material | undefined;
+  await mutate(['materials', 'deletedIdeas'], (tx) => {
+    const store = tx.objectStore('materials');
+    const removed = tx.objectStore('deletedIdeas');
+    const deleted = removed.getKey(input.id);
+    const aliases = mergedFrom.map(alias => ({
+      alias, record: store.get(alias.id), deleted: removed.getKey(alias.id),
+    }));
+    const current = store.get(input.id);
+    current.onsuccess = () => {
+      const existing = current.result as Material | undefined;
+      const duplicates: Material[] = [];
+      const notes: string[] = [];
+      for (const {alias, record} of aliases) {
+        const old = record.result as Material | undefined;
+        if (old) {
+          duplicates.push(old);
+          if (old.title !== alias.title || old.body !== alias.body)
+            notes.push([old.title, old.body].join('\n\n'));
+          store.delete(alias.id);
+        }
+        removed.put(true, alias.id);
+      }
+      if (deleted.result !== undefined) return;
+      if (!existing && aliases.some(a => a.deleted.result !== undefined) && !duplicates.length) {
+        removed.put(true, input.id);
+        return;
+      }
+      const evidence = [
+        ...new Map(
+          [...duplicates.flatMap(record => record.evidence), ...(existing?.evidence ?? []), ...input.evidence].map((item) => [
+            `${item.source}:${item.id}`,
+            item,
+          ]),
+        ).values(),
+      ].filter(item => !excludedEvidenceIds.includes(item.id));
+      if (
+        existing && !duplicates.length &&
+        (!isDiscoveredIdea(input.id) || existing.generatedDraft) &&
+        JSON.stringify(existing.evidence) === JSON.stringify(evidence)
+      ) {
+        saved = existing;
+        return;
+      }
+      const now = new Date().toISOString();
+      saved = {
+        ...ideaDetails(input),
+        ...input,
+        ...existing,
+        evidence,
+        folderId: existing?.folderId ?? formatFolder(input.format),
+        favorite: existing?.favorite ?? false,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+        revision: (existing?.revision ?? 0) + 1,
+        generatedDraft: isDiscoveredIdea(input.id)
+          ? (existing?.generatedDraft ?? { title: input.title, body: input.body })
+          : undefined,
+      };
+      for (const old of duplicates) {
+        saved.favorite ||= old.favorite;
+        if (saved.priority === 'normal') saved.priority = old.priority;
+        if (saved.status === 'new' && saved.folderId === formatFolder(saved.format)) {
+          saved.status = old.status;
+          saved.folderId = old.folderId;
+          saved.format = old.format;
+          saved.archivedFrom = old.archivedFrom;
+          saved.statusBeforeArchive = old.statusBeforeArchive;
+        }
+      }
+      if (notes.length) saved.body = [saved.body, ...notes].join('\n\n');
+      store.put(saved);
+    };
+  });
+  return saved;
+}
+
+export async function accountedForIdeas(ids: string[]) {
+  const db = await open();
+  return new Promise<boolean>((resolve, reject) => {
+    const tx = db.transaction(['materials', 'deletedIdeas'], 'readonly');
+    const checks = ids.map((id) => [
+      tx.objectStore('materials').getKey(id),
+      tx.objectStore('deletedIdeas').getKey(id),
+    ]);
+    tx.oncomplete = () => resolve(checks.every((pair) => pair.some((r) => r.result !== undefined)));
+    tx.onabort = () => reject(tx.error);
+  });
 }
 
 export async function reviewVideoIdeas(ideas: FoundIdea[]) {
@@ -435,9 +538,17 @@ export async function reviewVideoIdeas(ideas: FoundIdea[]) {
 }
 
 export async function deleteMaterial(id: string) {
-  const removed = snapshot.materials.find((item) => item.id === id);
-  await mutate(['materials'], (tx) => {
-    tx.objectStore('materials').delete(id);
+  let removed: Material | undefined;
+  await mutate(['materials', 'deletedIdeas'], (tx) => {
+    const store = tx.objectStore('materials');
+    const current = store.get(id);
+    current.onsuccess = () => {
+      removed = current.result;
+      if (!removed) return;
+      if (removed.source === 'tiktok' || removed.source === 'telegram')
+        tx.objectStore('deletedIdeas').put(true, id);
+      store.delete(id);
+    };
   });
   return removed;
 }
@@ -468,13 +579,14 @@ export async function saveRunArtifact(
   return saved;
 }
 export async function restoreMaterial(material: Material) {
-  await mutate(['materials', 'folders'], (tx, fail) => {
+  await mutate(['materials', 'folders', 'deletedIdeas'], (tx, fail) => {
     const existing = tx.objectStore('materials').get(material.id);
     existing.onsuccess = () => {
       if (existing.result) {
         fail(new Error('Материал уже восстановлен'));
         return;
       }
+      tx.objectStore('deletedIdeas').delete(material.id);
       const folder = tx.objectStore('folders').get(material.folderId);
       folder.onsuccess = () =>
         tx.objectStore('materials').put({

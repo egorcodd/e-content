@@ -41,7 +41,7 @@ const transport = {
         playCount: 100 + i + revision * 2,
         commentCount: i,
         diggCount: 2 * i,
-        shareCount: 1,
+        shareCount: 1 - revision,
       },
     }));
     return { itemList, hasMore: !short && first, cursor: 16 };
@@ -106,12 +106,18 @@ try {
     assert.equal(await sidebarAnalytics.getAttribute('aria-current'), 'page');
     const refresh = page.getByRole('button', { name: 'Обновить статистику' });
     const download = page.getByRole('button', { name: 'Скачать CSV' });
-    await page.getByText(/Получено 16 роликов из 25/).waitFor();
+    await refresh.getByText('Ошибка обновления', { exact: true }).waitFor();
+    const chartPanel = page.getByRole('region', { name: 'Показатели TikTok' });
+    const chartTop = (await chartPanel.boundingBox()).y;
+    const refreshBox = await refresh.boundingBox();
     const gate = Promise.withResolvers();
     pendingPosts = gate.promise;
     try {
       await refresh.click();
-      await page.getByText(/Собираем весь публичный каталог TikTok/).waitFor();
+      await refresh.getByText('Обновляем…', { exact: true }).waitFor();
+      assert.equal(await refresh.getAttribute('aria-busy'), 'true');
+      assert.deepEqual(await refresh.boundingBox(), refreshBox);
+      assert.equal((await chartPanel.boundingBox()).y, chartTop);
       assert.equal(await refresh.isDisabled(), true);
       assert.equal((await f.request('/analytics/tiktok/scans', 'POST', {})).status, 409);
     } finally {
@@ -119,6 +125,8 @@ try {
       gate.resolve();
     }
     const first = await waitForScan('complete');
+    await refresh.locator(`time[datetime="${first.catalog.finishedAt}"]`).waitFor();
+    assert.equal((await chartPanel.boundingBox()).y, chartTop);
     assert.equal(first.tiktok.length, 1);
     assert.equal(first.catalog.videos, 25);
     assert.deepEqual(first.tiktok[0].counters, {
@@ -131,23 +139,25 @@ try {
     assert.equal(videos.length, 25);
     assert.equal(videos.at(-1).title, 'Публикация 25');
     const trend = page.locator('.ap-trend .ag-trend-svg');
-    await trend.waitFor();
-    assert.equal(await page.getByRole('group', { name: 'Режим аналитики' }).count(), 0);
-    await trend.focus();
-    await trend.press('Home');
-    await page.locator('.ap-trend .ag-tooltip').getByText('124', { exact: true }).waitFor();
-    await page.waitForFunction(
-      () =>
-        document.querySelectorAll('.ap-kpi-value')[1]?.textContent.replace(/\D/g, '') === '2800',
-    );
-    await page.getByRole('button', { name: 'Данные', exact: true }).click();
-    const rows = page.locator('.ap-trend .ag-data-scroll > table tbody tr');
-    await rows.first().waitFor();
-    assert.equal(await rows.count(), 25);
+    await page.route('**/api/analytics/tiktok/cover?*', (route) => route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP1sAAAAASUVORK5CYII=', 'base64'),
+    }));
+    await page.getByText(/История началась с первого замера/).waitFor();
+    const kpis = page.locator('.ap-kpi-value');
+    const comparisons = page.locator('.ap-kpis .ag-delta');
     const period = page.getByRole('group', { name: 'Период аналитики' });
-    await period.getByRole('button', { name: '7 дней' }).click();
-    assert.equal(await rows.count(), 4);
-    await period.getByRole('button', { name: 'За всё время' }).click();
+    const selectPeriod = name => period.getByRole('button', { name, exact: true }).click();
+    const values = () => kpis.allTextContents();
+    await page.waitForFunction(() => document.querySelectorAll('.ap-kpi-value')[1]?.textContent.replace(/\D/g,'') === '2800');
+    assert.equal(await comparisons.count(), 0);
+    for (const name of ['7 дней', '30 дней']) {
+      await selectPeriod(name);
+      await page.getByText(/Есть один замер/).waitFor();
+      assert.deepEqual(await values(), Array(5).fill('—'));
+      assert.equal(await download.isDisabled(), true);
+    }
+    await selectPeriod('За всё время');
     const exported = page.waitForEvent('download');
     await download.click();
     const file = await exported;
@@ -161,10 +171,41 @@ try {
     assert.equal(second.tiktok[1].counters.views, 2850);
     assert.equal(second.tiktok[1].followers, 112);
     await page.locator('[data-growth-change="12"]').waitFor();
-    await page.getByText('Замеры счётчиков', { exact: true }).click();
-    const measurements = page.locator('.ap-measurement-details tbody tr');
-    await measurements.nth(1).getByText('+50', { exact: true }).waitFor();
-    assert.equal(await measurements.count(), 2);
+    assert.equal(await comparisons.count(), 0);
+    await selectPeriod('7 дней');
+    await page.waitForFunction(() => document.querySelectorAll('.ap-kpi-value')[1]?.textContent === '+50');
+    assert.equal(await comparisons.count(), 0);
+    await page.locator('.ap-measured-range').waitFor();
+    const growth = page.getByRole('region', { name: 'Ролики с приростом' });
+    const growthRows = growth.locator('tbody tr');
+    await growthRows.first().waitFor();
+    const preview = growthRows.first().locator('.ap-video-cover img');
+    await preview.scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => document.querySelector('.ap-video-cover img')?.naturalWidth > 0);
+    assert.equal(await growthRows.count(), 6);
+    assert.deepEqual(await growthRows.first().locator('td').allTextContents(), ['+2', '-1', '0']);
+    const sortComments = growth.getByRole('button', { name: 'Комментарии', exact: true });
+    await sortComments.scrollIntoViewIfNeeded();
+    const rankingPosition = await growth.boundingBox();
+    await sortComments.click();
+    await growth.getByRole('columnheader', { name: 'Комментарии' })
+      .and(growth.locator('[aria-sort="descending"]')).waitFor();
+    assert.deepEqual(await growth.boundingBox(), rankingPosition);
+    assert.equal(await growthRows.first().locator('td').first().evaluate((cell) =>
+      getComputedStyle(cell.querySelector('.ap-video-rank-glyphs')).transform), 'none');
+    await growth.getByRole('button', { name: 'Все ролики (25)' }).click();
+    assert.equal(await growthRows.count(), 25);
+    await growth.getByRole('button', { name: 'Свернуть' }).click();
+    await trend.waitFor();
+    await page.getByRole('button', { name: 'Данные', exact: true }).click();
+    const rows = page.locator('.ap-trend .ag-data-scroll > table tbody tr');
+    await rows.nth(1).getByText('+50',{exact:true}).waitFor();
+    assert.equal(await rows.count(), 2);
+    const growthDownload = page.waitForEvent('download');
+    await download.click();
+    const growthFile = await growthDownload;
+    assert.equal(growthFile.suggestedFilename(),'e-content-tiktok-growth-7.csv');
+    assert.match(fs.readFileSync(await growthFile.path(),'utf8').split('\r\n').at(-1), /;12;50;0;0;-25$/);
     short = true;
     await startScan();
     const fallback = await waitForScan('partial');
@@ -193,6 +234,32 @@ try {
     }
     assert.equal(transport.calls.filter((path) => path.includes('/comments')).length, 0);
     assert.deepEqual(errors, []);
+
+    const lastDate = Date.parse(second.tiktok[1].date);
+    const withHistory = [
+      { id: 'start', daysAgo: 14, views: 2700, followers: 100 },
+      { id: 'middle', daysAgo: 7, views: 2800, followers: 102, change: 100 },
+      { id: 'end', daysAgo: 0, views: 2850, followers: 106, change: 50 },
+    ].map(({ id, daysAgo, views, followers, change }) => ({
+      id,
+      date: new Date(lastDate - daysAgo * 86400000).toISOString(),
+      videos: 25,
+      counters: { views },
+      followers,
+      change: change === undefined ? undefined : { counters: { views: change }, coverageChanged: false },
+    }));
+    await page.route('**/api/analytics/history', (route) => route.fulfill({
+      json: { ...second, tiktok: withHistory },
+    }));
+    await page.reload();
+    await comparisons.first().waitFor();
+    assert.deepEqual(await comparisons.locator('.ag-delta-badge').allTextContents(), ['100%', '50%']);
+    assert.deepEqual(await comparisons.locator('.ag-delta-suffix').allTextContents(), [
+      'к прошлым 7 дням',
+      'к прошлым 7 дням',
+    ]);
+    assert.match(await comparisons.first().getAttribute('class'), /\bis-up\b/);
+    assert.match(await comparisons.last().getAttribute('class'), /\bis-down\b/);
     console.log(
       'Analytics checks passed: 25 public videos, 20 workshop videos, first full baseline, dynamics, partial coverage, archive periods, CSV and responsive layout.',
     );

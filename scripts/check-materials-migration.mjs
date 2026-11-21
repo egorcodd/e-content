@@ -239,6 +239,55 @@ try {
       assert.equal(reviewed[1].folderId, 'archive');
       assert.equal(reviewed[2].body, 'Мой план ролика.');
       assert.equal(reviewed[2].folderId, 'video-ideas');
+      const deletion = await legacyPage.evaluate(async () => {
+        const repo = await import('/src/features/materials/repository.ts');
+        const original = await repo.readMaterial('tiktok-topic-first-language');
+        const checks = [];
+        for (const id of [original.id, 'tiktok-discovered-' + 'b'.repeat(24)]) {
+          const idea = { ...original, id };
+          await repo.saveFoundIdea(idea);
+          const removed = await repo.deleteMaterial(id);
+          await repo.saveFoundIdea(idea);
+          checks.push((await repo.readMaterial(id)) === undefined && await repo.accountedForIdeas([id]));
+          await repo.restoreMaterial(removed);
+          checks.push((await repo.readMaterial(id))?.folderId === 'video-ideas');
+        }
+        return checks;
+      });
+      assert.deepEqual(deletion, [true, true, true, true]);
+      const merged = await legacyPage.evaluate(async () => {
+        const repo = await import('/src/features/materials/repository.ts');
+        const make = (id, title) => ({id, title, body: title, source: 'tiktok', format:'video',
+          evidence: [{id:'quote-'+id,text:title,source:'tiktok',kind:'comment'}]});
+        const first = make('tiktok-ai-original','Исходная тема');
+        const second = make('tiktok-ai-duplicate','Переформулировка');
+        const saved = await repo.saveFoundIdea(first);
+        await repo.saveMaterial({...saved,title:'Мой заголовок',status:'selected'},saved.revision);
+        const copy = await repo.saveFoundIdea(second);
+        await repo.saveMaterial({...copy,body:'Моя заметка',favorite:true},copy.revision);
+        const update = {...first,evidence:[...first.evidence,...second.evidence],
+          mergedFrom:[{id:second.id,title:second.title,body:second.body}]};
+        const result = await repo.saveFoundIdea(update);
+        const repeated = await repo.saveFoundIdea(update);
+        const corrected = await repo.saveFoundIdea({...update, evidence:first.evidence,
+          excludedEvidenceIds:[second.evidence[0].id]});
+        if (corrected.evidence.length !== 1 || corrected.evidence[0].id !== first.evidence[0].id ||
+            corrected.title !== 'Мой заголовок') throw new Error('Topic evidence correction was lost');
+        const unrelated = make('tiktok-ai-independent','Другой вопрос');
+        await repo.saveFoundIdea({...unrelated,evidence:second.evidence});
+        if ((await repo.readMaterial(unrelated.id)).evidence[0].id !== second.evidence[0].id)
+          throw new Error('Topic correction removed evidence from another topic');
+        const duplicate = await repo.readMaterial(second.id);
+        await repo.deleteMaterial(first.id);
+        await repo.saveFoundIdea(update);
+        await repo.saveFoundIdea(second);
+        return {title:result.title, status:result.status, favorite:result.favorite,
+          notesPreserved:result.body.includes('Моя заметка'), count:result.evidence.length,
+          stable:repeated.revision===result.revision, duplicate:!!duplicate,
+          resurrected:!!await repo.readMaterial(first.id)||!!await repo.readMaterial(second.id)};
+      });
+      assert.deepEqual(merged,{title:'Мой заголовок',status:'selected',favorite:true,
+        notesPreserved:true,count:2,stable:true,duplicate:false,resurrected:false});
     }
     await legacyPage.context().close();
   }
